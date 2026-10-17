@@ -17,14 +17,9 @@ function formatPct(pct: number): string {
   return `${sign}${pct.toFixed(2)}%`;
 }
 
-/** Tyre-wear chart values: 0% at fresh rubber (shortest bar), rising as the tyre loses pace. */
-function tyreWearChartValues(points: PacePoint[]): { values: number[]; flipped: boolean } {
-  const raw = points.map((p) => p.tyre_degradation_pct ?? 0);
-  if (raw.length < 2) return { values: raw, flipped: false };
-  // If the model says older rubber is "faster", flip so the chart still reads as wear↑
-  const flipped = raw[raw.length - 1] < raw[0];
-  const oriented = flipped ? raw.map((v) => -v) : raw;
-  return { values: oriented, flipped };
+/** Tyre-wear chart: degradation % (0% fresh → higher = more wear). Backend is already monotonic. */
+function tyreWearChartValues(points: PacePoint[]): number[] {
+  return points.map((p) => Math.max(0, p.tyre_degradation_pct ?? 0));
 }
 
 export function DriverDetail({ detail }: { detail: StrategyDetail }) {
@@ -56,12 +51,12 @@ export function DriverDetail({ detail }: { detail: StrategyDetail }) {
   const activeCurve = curves[Math.min(selectedStint, curves.length - 1)] ?? curves[0];
   const points = useMemo(() => activeCurve?.points ?? [], [activeCurve]);
 
-  const tyreWear = useMemo(() => tyreWearChartValues(points), [points]);
+  const tyreWearValues = useMemo(() => tyreWearChartValues(points), [points]);
 
   const values = useMemo(() => {
     if (chartMode === "race_pace") return points.map((p) => p.predicted_lap_s);
-    return tyreWear.values;
-  }, [points, chartMode, tyreWear.values]);
+    return tyreWearValues;
+  }, [points, chartMode, tyreWearValues]);
 
   // Race pace: min-max scale. Tyre wear: zero-anchored so 0% (fresh) is the shortest bar.
   const { minVal, range } = useMemo(() => {
@@ -178,11 +173,9 @@ export function DriverDetail({ detail }: { detail: StrategyDetail }) {
           ) : (
             <>
               <strong className="text-white">Tyre wear %</strong> is pace loss vs a fresh tyre (fuel fixed).
-              Fresh rubber = <strong className="text-white">0%</strong> (shortest bar); higher bars = more
-              degradation.
-              {tyreWear.flipped && (
-                <> Model slope was inverted — chart oriented so wear still rises to the right.</>
-              )}
+              Fresh = <strong className="text-white">0%</strong> / tyre effect{" "}
+              <strong className="text-white">0.000s</strong> (shortest bar). Wear is forced{" "}
+              <em>non-decreasing</em> with age — a tyre cannot get faster mid-stint.
             </>
           )}{" "}
           Click a bar for details.

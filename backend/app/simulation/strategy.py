@@ -22,6 +22,40 @@ from app.models.lap_time import LapTimeModel
 
 DRY_COMPOUNDS = ("SOFT", "MEDIUM", "HARD")
 
+# Floor wear (s/lap of tyre age) so "tyre only" never invents a healing tyre
+_COMPOUND_WEAR_S_PER_LAP = {
+    "SOFT": 0.055,
+    "MEDIUM": 0.035,
+    "HARD": 0.022,
+}
+
+
+def _monotonic_tyre_loss_seconds(raw_effects: list[float], compound: str) -> list[float]:
+    """Turn raw model deltas into non-decreasing pace loss vs fresh rubber.
+
+    XGBoost often inverts tyre_age (confounded with fuel in training). We:
+    1) flip if the overall slope says older = faster,
+    2) take a running max so the tyre cannot "heal",
+    3) apply a compound wear floor so loss grows with age.
+    """
+    if not raw_effects:
+        return []
+    effects = list(raw_effects)
+    # Anchor at first sample
+    effects = [e - effects[0] for e in effects]
+    if len(effects) >= 2 and effects[-1] < effects[0]:
+        effects = [-e for e in effects]
+
+    mono: list[float] = []
+    running = 0.0
+    rate = _COMPOUND_WEAR_S_PER_LAP.get(compound.upper(), 0.03)
+    for i, e in enumerate(effects):
+        running = max(running, e, 0.0)
+        # Physical floor: at least `rate` seconds lost per lap of age in this stint
+        running = max(running, rate * i)
+        mono.append(running)
+    return mono
+
 
 class StrategySimulator:
     def __init__(
@@ -218,6 +252,8 @@ class StrategySimulator:
         ]
         tyre_preds = self.model.predict_laps(pd.DataFrame(tyre_only_rows))
         tyre_base = float(tyre_preds[0]) if len(tyre_preds) else 0.0
+        raw_effects = [float(p) - tyre_base for p in tyre_preds]
+        wear_effects = _monotonic_tyre_loss_seconds(raw_effects, stint.compound)
         # Typical soft/medium/hard stint horizon for "life used" percentage
         life_horizon = max(len(preds) - 1, 1)
 
@@ -225,8 +261,7 @@ class StrategySimulator:
         for i, pred in enumerate(preds):
             lap_number = stint.lap_start + i
             tyre_age = stint.tyre_age_at_start + i
-            tyre_pred = float(tyre_preds[i])
-            effect_s = tyre_pred - tyre_base
+            effect_s = wear_effects[i] if i < len(wear_effects) else 0.0
             deg_pct = (effect_s / tyre_base * 100.0) if tyre_base else 0.0
             life_used = (i / life_horizon) * 100.0
             points.append(
