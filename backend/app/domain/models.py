@@ -55,3 +55,40 @@ class StrategyDetail(BaseModel):
     alternatives: list[DriverStrategy] = Field(default_factory=list)
     degradation_curve: list[dict] = Field(default_factory=list)
     model_version: str = "xgboost-lap-v1"
+
+
+class PredictedFinish(BaseModel):
+    position: int
+    driver_number: int
+    name_acronym: str
+    full_name: str
+    team_name: str
+    team_colour: str | None = None
+    estimated_race_time_s: float | None = None
+    gap_to_leader_s: float | None = None
+    strategy_label: str | None = None
+    confidence: float | None = None
+
+
+class ClassificationResponse(BaseModel):
+    meeting: MeetingSummary
+    standings: list[PredictedFinish]
+    model_version: str = "ranking-strategy-v1"
+    generated_at: str
+    note: str = "Classification is primary; estimated times are secondary."
+
+
+class ModelScore(BaseModel):
+    name: str
+    kind: str
+    version: str
+    primary: bool = False
+    metrics: dict[str, float | int | str | None]
+    description: str = ""
+
+
+class ModelsMetricsResponse(BaseModel):
+    generated_at: str
+    models: list[ModelScore]
+    evaluation_races: int = 0
+    notes: list[str] = Field(default_factory=list)

@@ -3,7 +3,13 @@ from functools import lru_cache
 from fastapi import APIRouter, HTTPException, Query
 
 from app.data.pipeline import RaceDataPipeline
-from app.domain.models import MeetingSummary, StrategyDetail, StrategyResponse
+from app.domain.models import (
+    ClassificationResponse,
+    MeetingSummary,
+    StrategyDetail,
+    StrategyResponse,
+)
+from app.simulation.prediction import ClassificationPredictor
 from app.simulation.strategy import StrategySimulator
 
 router = APIRouter(prefix="/api", tags=["races"])
@@ -17,6 +23,11 @@ def _pipeline() -> RaceDataPipeline:
 @lru_cache(maxsize=1)
 def _simulator() -> StrategySimulator:
     return StrategySimulator(pipeline=_pipeline())
+
+
+@lru_cache(maxsize=1)
+def _predictor() -> ClassificationPredictor:
+    return ClassificationPredictor(simulator=_simulator())
 
 
 @router.get("/races", response_model=list[MeetingSummary])
@@ -56,6 +67,18 @@ def driver_strategy(meeting_key: int, driver_number: int) -> StrategyDetail:
         return _simulator().simulate_driver_detail(key, driver_number)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/races/{meeting_key}/prediction", response_model=ClassificationResponse)
+def race_prediction(meeting_key: int) -> ClassificationResponse:
+    """Predicted finishing order — classification primary, times secondary."""
+    try:
+        key = None if meeting_key <= 0 else meeting_key
+        return _predictor().predict(key)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:

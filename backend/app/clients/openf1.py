@@ -122,3 +122,6 @@ class OpenF1Client:
 
     def weather(self, session_key: int) -> pd.DataFrame:
         return self.get_df("weather", {"session_key": session_key})
+
+    def session_result(self, session_key: int) -> pd.DataFrame:
+        return self.get_df("session_result", {"session_key": session_key})
