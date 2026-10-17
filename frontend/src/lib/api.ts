@@ -40,11 +40,29 @@ export type StrategyResponse = {
   generated_at: string;
 };
 
+export type PacePoint = {
+  lap_number: number;
+  tyre_age: number;
+  fuel_proxy: number;
+  predicted_lap_s: number;
+  tyre_effect_s: number;
+  compound: string;
+};
+
+export type StintPaceCurve = {
+  stint_index: number;
+  compound: string;
+  lap_start: number;
+  lap_end: number;
+  points: PacePoint[];
+};
+
 export type StrategyDetail = {
   meeting: MeetingSummary;
   best: DriverStrategy;
   alternatives: DriverStrategy[];
-  degradation_curve: { tyre_age: number; predicted_lap_s: number; compound: string }[];
+  degradation_curve: PacePoint[];
+  stint_curves: StintPaceCurve[];
   model_version: string;
 };
 

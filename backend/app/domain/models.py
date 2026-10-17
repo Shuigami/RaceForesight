@@ -49,11 +49,30 @@ class StrategyResponse(BaseModel):
     generated_at: str
 
 
+class PacePoint(BaseModel):
+    lap_number: int
+    tyre_age: int
+    fuel_proxy: int
+    predicted_lap_s: float
+    tyre_effect_s: float
+    compound: str
+
+
+class StintPaceCurve(BaseModel):
+    stint_index: int
+    compound: str
+    lap_start: int
+    lap_end: int
+    points: list[PacePoint] = Field(default_factory=list)
+
+
 class StrategyDetail(BaseModel):
     meeting: MeetingSummary
     best: DriverStrategy
     alternatives: list[DriverStrategy] = Field(default_factory=list)
+    # Kept for backward compatibility: first stint race-pace points
     degradation_curve: list[dict] = Field(default_factory=list)
+    stint_curves: list[StintPaceCurve] = Field(default_factory=list)
     model_version: str = "xgboost-lap-v1"
 
 

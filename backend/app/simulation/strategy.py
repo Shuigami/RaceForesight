@@ -12,6 +12,8 @@ from app.data.pipeline import RaceDataPipeline
 from app.domain.models import (
     DriverStrategy,
     MeetingSummary,
+    PacePoint,
+    StintPaceCurve,
     StintPlan,
     StrategyDetail,
     StrategyResponse,
@@ -169,6 +171,76 @@ class StrategySimulator:
         total += strategy["stops"] * pit_loss
         return total, stints
 
+    def _build_stint_curve(
+        self,
+        *,
+        driver_number: int,
+        team_name: str,
+        circuit: str,
+        stint: StintPlan,
+        stint_index: int,
+        total_laps: int,
+        pace_offset: float,
+        track_temp: float,
+    ) -> StintPaceCurve:
+        """Race-pace points for a stint + tyre-only delta (fuel/lap held fixed)."""
+        lap_end = min(stint.lap_end, stint.lap_start + 24)
+        preds = self.model.predict_stint_laps(
+            driver_number=driver_number,
+            team_name=team_name,
+            circuit_short_name=circuit,
+            compound=stint.compound,
+            lap_start=stint.lap_start,
+            lap_end=lap_end,
+            tyre_age_at_start=stint.tyre_age_at_start,
+            total_laps=total_laps,
+            track_temp=track_temp,
+            pace_offset=pace_offset,
+        )
+
+        # Isolate tyre wear: same mid-stint fuel/lap, only tyre_age varies
+        mid_lap = (stint.lap_start + lap_end) // 2
+        mid_fuel = max(1, total_laps - mid_lap + 1)
+        ages = list(range(stint.tyre_age_at_start, stint.tyre_age_at_start + len(preds)))
+        tyre_only_rows = [
+            {
+                "driver_number": driver_number,
+                "team_name": team_name,
+                "circuit_short_name": circuit,
+                "compound": stint.compound,
+                "tyre_age": age,
+                "lap_number": mid_lap,
+                "fuel_proxy": mid_fuel,
+                "track_temp": track_temp,
+                "rainfall": 0.0,
+            }
+            for age in ages
+        ]
+        tyre_preds = self.model.predict_laps(pd.DataFrame(tyre_only_rows))
+        tyre_base = float(tyre_preds[0]) if len(tyre_preds) else 0.0
+
+        points: list[PacePoint] = []
+        for i, pred in enumerate(preds):
+            lap_number = stint.lap_start + i
+            tyre_age = stint.tyre_age_at_start + i
+            points.append(
+                PacePoint(
+                    lap_number=lap_number,
+                    tyre_age=tyre_age,
+                    fuel_proxy=max(1, total_laps - lap_number + 1),
+                    predicted_lap_s=round(float(pred), 3),
+                    tyre_effect_s=round(float(tyre_preds[i]) - tyre_base, 3),
+                    compound=stint.compound,
+                )
+            )
+        return StintPaceCurve(
+            stint_index=stint_index,
+            compound=stint.compound,
+            lap_start=stint.lap_start,
+            lap_end=lap_end,
+            points=points,
+        )
+
     def simulate_driver(
         self,
         *,
@@ -178,7 +250,7 @@ class StrategySimulator:
         pace_offset: float,
         top_n: int = 5,
         track_temp: float = 35.0,
-    ) -> tuple[DriverStrategy, list[DriverStrategy], list[dict]]:
+    ) -> tuple[DriverStrategy, list[DriverStrategy], list[dict], list[StintPaceCurve]]:
         self._ensure_model()
         total_laps = meeting.race_laps
         circuit = meeting.circuit_short_name or "COTA"
@@ -220,25 +292,33 @@ class StrategySimulator:
         best = to_ds(best_time, best_strat, best_stints)
         alternatives = [to_ds(t, s, st) for t, s, st in scored[1:top_n]]
 
-        # Degradation curve for best first stint compound
-        deg: list[dict] = []
-        first = best.stints[0]
-        preds = self.model.predict_stint_laps(
-            driver_number=best.driver_number,
-            team_name=best.team_name,
-            circuit_short_name=circuit,
-            compound=first.compound,
-            lap_start=1,
-            lap_end=min(25, total_laps),
-            tyre_age_at_start=0,
-            total_laps=total_laps,
-            track_temp=track_temp,
-            pace_offset=pace_offset,
-        )
-        for i, p in enumerate(preds, start=1):
-            deg.append({"tyre_age": i - 1, "predicted_lap_s": round(p, 3), "compound": first.compound})
+        stint_curves = [
+            self._build_stint_curve(
+                driver_number=best.driver_number,
+                team_name=best.team_name,
+                circuit=circuit,
+                stint=stint,
+                stint_index=i,
+                total_laps=total_laps,
+                pace_offset=pace_offset,
+                track_temp=track_temp,
+            )
+            for i, stint in enumerate(best.stints)
+        ]
+        # Legacy flat curve = first stint race-pace points
+        deg = [
+            {
+                "tyre_age": p.tyre_age,
+                "predicted_lap_s": p.predicted_lap_s,
+                "compound": p.compound,
+                "lap_number": p.lap_number,
+                "fuel_proxy": p.fuel_proxy,
+                "tyre_effect_s": p.tyre_effect_s,
+            }
+            for p in (stint_curves[0].points if stint_curves else [])
+        ]
 
-        return best, alternatives, deg
+        return best, alternatives, deg, stint_curves
 
     def simulate_grid(self, meeting_key: int | None = None, top_n: int = 3) -> StrategyResponse:
         meeting = self.pipeline.get_meeting(meeting_key)
@@ -257,7 +337,7 @@ class StrategySimulator:
         results: list[DriverStrategy] = []
         for _, row in drivers.iterrows():
             driver = row.to_dict()
-            best, _, _ = self.simulate_driver(
+            best, _, _, _ = self.simulate_driver(
                 driver=driver,
                 meeting=meeting,
                 pit_loss=pit_loss,
@@ -283,7 +363,7 @@ class StrategySimulator:
         driver = match.iloc[0].to_dict()
         pit_loss = self.pipeline.estimate_pit_loss(circuit_short_name=meeting.circuit_short_name or "COTA")
         offsets = self._pace_offsets(drivers, meeting.circuit_short_name or "COTA")
-        best, alts, deg = self.simulate_driver(
+        best, alts, deg, stint_curves = self.simulate_driver(
             driver=driver,
             meeting=meeting,
             pit_loss=pit_loss,
@@ -295,5 +375,6 @@ class StrategySimulator:
             best=best,
             alternatives=alts,
             degradation_curve=deg,
+            stint_curves=stint_curves,
             model_version=self.model.meta.get("version", "xgboost-lap-v1"),
         )
