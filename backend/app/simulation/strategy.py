@@ -16,6 +16,7 @@ from app.domain.models import (
     StintPaceCurve,
     StintPlan,
     StrategyDetail,
+    StrategyOption,
     StrategyResponse,
 )
 from app.models.lap_time import LapTimeModel
@@ -294,7 +295,13 @@ class StrategySimulator:
         pace_offset: float,
         top_n: int = 5,
         track_temp: float = 35.0,
-    ) -> tuple[DriverStrategy, list[DriverStrategy], list[dict], list[StintPaceCurve]]:
+    ) -> tuple[
+        DriverStrategy,
+        list[DriverStrategy],
+        list[dict],
+        list[StintPaceCurve],
+        list[StrategyOption],
+    ]:
         self._ensure_model()
         total_laps = meeting.race_laps
         circuit = meeting.circuit_short_name or "COTA"
@@ -333,23 +340,35 @@ class StrategySimulator:
                 strategy_label=str(strat["label"]),
             )
 
-        best = to_ds(best_time, best_strat, best_stints)
-        alternatives = [to_ds(t, s, st) for t, s, st in scored[1:top_n]]
+        ranked = [to_ds(t, s, st) for t, s, st in scored[:top_n]]
+        best = ranked[0]
+        alternatives = ranked[1:]
 
-        stint_curves = [
-            self._build_stint_curve(
-                driver_number=best.driver_number,
-                team_name=best.team_name,
-                circuit=circuit,
-                stint=stint,
-                stint_index=i,
-                total_laps=total_laps,
-                pace_offset=pace_offset,
-                track_temp=track_temp,
+        def curves_for(ds: DriverStrategy) -> list[StintPaceCurve]:
+            return [
+                self._build_stint_curve(
+                    driver_number=ds.driver_number,
+                    team_name=ds.team_name,
+                    circuit=circuit,
+                    stint=stint,
+                    stint_index=i,
+                    total_laps=total_laps,
+                    pace_offset=pace_offset,
+                    track_temp=track_temp,
+                )
+                for i, stint in enumerate(ds.stints)
+            ]
+
+        options = [
+            StrategyOption(
+                strategy=ds,
+                stint_curves=curves_for(ds),
+                is_recommended=(i == 0),
             )
-            for i, stint in enumerate(best.stints)
+            for i, ds in enumerate(ranked)
         ]
-        # Legacy flat curve = first stint race-pace points
+        stint_curves = options[0].stint_curves if options else []
+        # Legacy flat curve = first stint race-pace points of recommended strategy
         deg = [
             {
                 "tyre_age": p.tyre_age,
@@ -364,7 +383,7 @@ class StrategySimulator:
             for p in (stint_curves[0].points if stint_curves else [])
         ]
 
-        return best, alternatives, deg, stint_curves
+        return best, alternatives, deg, stint_curves, options
 
     def simulate_grid(self, meeting_key: int | None = None, top_n: int = 3) -> StrategyResponse:
         meeting = self.pipeline.get_meeting(meeting_key)
@@ -383,7 +402,7 @@ class StrategySimulator:
         results: list[DriverStrategy] = []
         for _, row in drivers.iterrows():
             driver = row.to_dict()
-            best, _, _, _ = self.simulate_driver(
+            best, _, _, _, _ = self.simulate_driver(
                 driver=driver,
                 meeting=meeting,
                 pit_loss=pit_loss,
@@ -409,7 +428,7 @@ class StrategySimulator:
         driver = match.iloc[0].to_dict()
         pit_loss = self.pipeline.estimate_pit_loss(circuit_short_name=meeting.circuit_short_name or "COTA")
         offsets = self._pace_offsets(drivers, meeting.circuit_short_name or "COTA")
-        best, alts, deg, stint_curves = self.simulate_driver(
+        best, alts, deg, stint_curves, options = self.simulate_driver(
             driver=driver,
             meeting=meeting,
             pit_loss=pit_loss,
@@ -422,5 +441,6 @@ class StrategySimulator:
             alternatives=alts,
             degradation_curve=deg,
             stint_curves=stint_curves,
+            options=options,
             model_version=self.model.meta.get("version", "xgboost-lap-v1"),
         )

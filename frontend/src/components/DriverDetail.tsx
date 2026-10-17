@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { PacePoint, StrategyDetail } from "@/lib/api";
+import type { PacePoint, StrategyDetail, StrategyOption } from "@/lib/api";
 import { formatRaceTime } from "@/lib/api";
 import { CompoundPills } from "./CompoundPills";
 
@@ -17,40 +17,53 @@ function formatPct(pct: number): string {
   return `${sign}${pct.toFixed(2)}%`;
 }
 
-/** Tyre-wear chart: degradation % (0% fresh → higher = more wear). Backend is already monotonic. */
 function tyreWearChartValues(points: PacePoint[]): number[] {
   return points.map((p) => Math.max(0, p.tyre_degradation_pct ?? 0));
 }
 
-export function DriverDetail({ detail }: { detail: StrategyDetail }) {
-  const { best, alternatives, stint_curves, degradation_curve } = detail;
-  const curves =
-    stint_curves?.length > 0
-      ? stint_curves
-      : [
-          {
-            stint_index: 0,
-            compound: degradation_curve[0]?.compound ?? best.stints[0]?.compound ?? "UNKNOWN",
-            lap_start: best.stints[0]?.lap_start ?? 1,
-            lap_end: best.stints[0]?.lap_end ?? 25,
-            points: degradation_curve as PacePoint[],
-          },
-        ];
+function buildOptions(detail: StrategyDetail): StrategyOption[] {
+  if (detail.options?.length) return detail.options;
+  // Fallback if API is older
+  const legacy: StrategyOption[] = [
+    {
+      strategy: detail.best,
+      stint_curves: detail.stint_curves ?? [],
+      is_recommended: true,
+    },
+    ...detail.alternatives.map((strategy) => ({
+      strategy,
+      stint_curves: [],
+      is_recommended: false,
+    })),
+  ];
+  return legacy;
+}
 
+export function DriverDetail({ detail }: { detail: StrategyDetail }) {
+  const options = useMemo(() => buildOptions(detail), [detail]);
+  const recommended = options.find((o) => o.is_recommended) ?? options[0];
+
+  const [activeIdx, setActiveIdx] = useState(0);
   const [selectedStint, setSelectedStint] = useState(0);
   const [chartMode, setChartMode] = useState<ChartMode>("tyre_only");
   const [selectedLapIdx, setSelectedLapIdx] = useState(0);
-  const [selectedAlt, setSelectedAlt] = useState<number | null>(null);
 
   useEffect(() => {
+    setActiveIdx(0);
     setSelectedStint(0);
     setSelectedLapIdx(0);
-    setSelectedAlt(null);
-  }, [best.driver_number, best.strategy_label]);
+  }, [detail.best.driver_number, detail.best.strategy_label]);
 
-  const activeCurve = curves[Math.min(selectedStint, curves.length - 1)] ?? curves[0];
+  const active = options[Math.min(activeIdx, Math.max(options.length - 1, 0))] ?? recommended;
+  const strategy = active?.strategy ?? detail.best;
+  const curves = active?.stint_curves?.length
+    ? active.stint_curves
+    : activeIdx === 0
+      ? detail.stint_curves
+      : [];
+
+  const activeCurve = curves[Math.min(selectedStint, Math.max(curves.length - 1, 0))] ?? curves[0];
   const points = useMemo(() => activeCurve?.points ?? [], [activeCurve]);
-
   const tyreWearValues = useMemo(() => tyreWearChartValues(points), [points]);
 
   const values = useMemo(() => {
@@ -58,7 +71,6 @@ export function DriverDetail({ detail }: { detail: StrategyDetail }) {
     return tyreWearValues;
   }, [points, chartMode, tyreWearValues]);
 
-  // Race pace: min-max scale. Tyre wear: zero-anchored so 0% (fresh) is the shortest bar.
   const { minVal, range } = useMemo(() => {
     if (values.length === 0) return { minVal: 0, range: 1 };
     if (chartMode === "race_pace") {
@@ -72,44 +84,116 @@ export function DriverDetail({ detail }: { detail: StrategyDetail }) {
   }, [values, chartMode]);
 
   const selectedPoint = points[Math.min(selectedLapIdx, Math.max(points.length - 1, 0))] ?? null;
-  const comparedAlt = selectedAlt != null ? alternatives[selectedAlt] : null;
-  const timeDelta =
-    comparedAlt != null ? comparedAlt.predicted_race_time_s - best.predicted_race_time_s : null;
+  const deltaVsRecommended =
+    recommended && strategy
+      ? strategy.predicted_race_time_s - recommended.strategy.predicted_race_time_s
+      : 0;
+
+  const selectOption = (idx: number) => {
+    setActiveIdx(idx);
+    setSelectedStint(0);
+    setSelectedLapIdx(0);
+  };
 
   return (
     <section className="space-y-6 rounded-sm border border-white/10 bg-panel/90 p-6 backdrop-blur">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-[11px] uppercase tracking-[0.2em] text-muted">Driver strategy</p>
-          <h2 className="font-display text-4xl tracking-wide text-white">{best.full_name}</h2>
+          <h2 className="font-display text-4xl tracking-wide text-white">{strategy.full_name}</h2>
           <p className="mt-1 text-sm text-fog">
-            {best.team_name} · {best.strategy_label}
+            {strategy.team_name} · {strategy.strategy_label}
+            {active?.is_recommended ? (
+              <span className="ml-2 text-accent">· recommended</span>
+            ) : (
+              <span className="ml-2 text-muted">· alternative view</span>
+            )}
           </p>
         </div>
         <div className="text-right">
           <p className="text-[11px] uppercase tracking-[0.16em] text-muted">Strategy race time</p>
-          <p className="font-mono text-3xl text-accent">{formatRaceTime(best.predicted_race_time_s)}</p>
+          <p className="font-mono text-3xl text-accent">
+            {formatRaceTime(strategy.predicted_race_time_s)}
+          </p>
+          {!active?.is_recommended && (
+            <p className="mt-1 font-mono text-xs text-muted">
+              vs recommended {formatDelta(deltaVsRecommended)}
+            </p>
+          )}
         </div>
       </header>
 
       <div>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-[11px] uppercase tracking-[0.16em] text-muted">
+            Strategy options — click to load full detail
+          </h3>
+          <p className="text-xs text-fog">Recommended stays on top</p>
+        </div>
+        <ul className="space-y-2">
+          {options.map((opt, idx) => {
+            const selected = activeIdx === idx;
+            const delta =
+              opt.strategy.predicted_race_time_s - recommended.strategy.predicted_race_time_s;
+            return (
+              <li key={opt.strategy.strategy_label}>
+                <button
+                  type="button"
+                  onClick={() => selectOption(idx)}
+                  className={`flex w-full flex-wrap items-center justify-between gap-3 border px-4 py-3 text-left transition ${
+                    selected
+                      ? "border-accent bg-accent/15"
+                      : "border-white/5 bg-ink-900/40 hover:border-white/20"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center gap-3">
+                    {opt.is_recommended && (
+                      <span className="border border-accent/40 bg-accent/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-accent">
+                        Best
+                      </span>
+                    )}
+                    <span className="font-mono text-xs text-fog">{opt.strategy.stops}-stop</span>
+                    <CompoundPills compounds={opt.strategy.compounds} />
+                    <span className="font-mono text-xs text-muted">
+                      @{opt.strategy.pit_laps.join(", ")}
+                    </span>
+                    <span className="hidden text-xs text-muted sm:inline">
+                      {opt.strategy.strategy_label}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-mono text-sm text-white">
+                      {formatRaceTime(opt.strategy.predicted_race_time_s)}
+                    </span>
+                    <span className="ml-3 font-mono text-xs text-muted">
+                      {opt.is_recommended ? "baseline" : formatDelta(delta)}
+                    </span>
+                  </div>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      <div>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-[11px] uppercase tracking-[0.16em] text-muted">Stints — click to inspect</h3>
-          <p className="text-xs text-fog">Selected stint drives the chart below</p>
+          <p className="text-xs text-fog">For the strategy selected above</p>
         </div>
         <div className="grid gap-3 md:grid-cols-3">
-          {best.stints.map((stint, i) => {
-            const active = selectedStint === i;
+          {strategy.stints.map((stint, i) => {
+            const activeStint = selectedStint === i;
             return (
               <button
-                key={`${stint.compound}-${i}`}
+                key={`${strategy.strategy_label}-${stint.compound}-${i}`}
                 type="button"
                 onClick={() => {
                   setSelectedStint(i);
                   setSelectedLapIdx(0);
                 }}
                 className={`border p-4 text-left transition ${
-                  active
+                  activeStint
                     ? "border-accent bg-accent/15"
                     : "border-white/10 bg-ink-850/60 hover:border-white/25"
                 }`}
@@ -121,7 +205,7 @@ export function DriverDetail({ detail }: { detail: StrategyDetail }) {
                 <p className="mt-3 font-mono text-sm text-fog">
                   Laps {stint.lap_start}–{stint.lap_end}
                 </p>
-                {active && (
+                {activeStint && (
                   <p className="mt-2 text-[11px] uppercase tracking-[0.12em] text-accent">Viewing</p>
                 )}
               </button>
@@ -135,7 +219,7 @@ export function DriverDetail({ detail }: { detail: StrategyDetail }) {
           <div>
             <h3 className="text-[11px] uppercase tracking-[0.16em] text-muted">Lap model explorer</h3>
             <p className="mt-1 font-display text-2xl tracking-wide text-white">
-              Stint {selectedStint + 1} · {activeCurve?.compound ?? "—"}
+              Stint {selectedStint + 1} · {activeCurve?.compound ?? strategy.stints[selectedStint]?.compound ?? "—"}
             </p>
           </div>
           <div className="flex gap-2">
@@ -172,44 +256,49 @@ export function DriverDetail({ detail }: { detail: StrategyDetail }) {
             </>
           ) : (
             <>
-              <strong className="text-white">Tyre wear %</strong> grows with tyre age (compound wear rate +
-              model slowdowns when they make sense). Fresh = <strong className="text-white">0%</strong>.
-              Bars should rise across the stint — Soft faster than Hard.
+              <strong className="text-white">Tyre wear %</strong> grows with tyre age. Fresh ={" "}
+              <strong className="text-white">0%</strong>. Soft wears faster than Hard.
             </>
           )}{" "}
           Click a bar for details.
         </p>
 
-        <div className="relative flex h-36 items-end gap-1 border border-white/10 bg-ink-900/50 p-3">
-          {chartMode === "tyre_only" && (
-            <div className="pointer-events-none absolute inset-x-3 top-3 flex justify-between text-[10px] uppercase tracking-wider text-muted">
-              <span>0% fresh</span>
-              <span>more wear →</span>
-            </div>
-          )}
-          {points.map((point, idx) => {
-            const value = values[idx] ?? 0;
-            const height = Math.max(6, ((value - minVal) / range) * 100);
-            const active = selectedLapIdx === idx;
-            const label =
-              chartMode === "race_pace"
-                ? `${point.predicted_lap_s.toFixed(3)}s`
-                : formatPct(point.tyre_degradation_pct ?? 0);
-            return (
-              <button
-                key={`${point.lap_number}-${idx}`}
-                type="button"
-                onClick={() => setSelectedLapIdx(idx)}
-                className={`flex-1 rounded-t-sm transition ${
-                  active ? "bg-white" : "bg-accent/80 hover:bg-accent"
-                }`}
-                style={{ height: `${height}%` }}
-                title={`Lap ${point.lap_number}: ${label}`}
-                aria-label={`Lap ${point.lap_number}`}
-              />
-            );
-          })}
-        </div>
+        {points.length === 0 ? (
+          <div className="border border-white/10 bg-ink-900/50 px-4 py-8 text-center text-sm text-muted">
+            No lap curve for this option yet.
+          </div>
+        ) : (
+          <div className="relative flex h-36 items-end gap-1 border border-white/10 bg-ink-900/50 p-3">
+            {chartMode === "tyre_only" && (
+              <div className="pointer-events-none absolute inset-x-3 top-3 flex justify-between text-[10px] uppercase tracking-wider text-muted">
+                <span>0% fresh</span>
+                <span>more wear →</span>
+              </div>
+            )}
+            {points.map((point, idx) => {
+              const value = values[idx] ?? 0;
+              const height = Math.max(6, ((value - minVal) / range) * 100);
+              const activeBar = selectedLapIdx === idx;
+              const label =
+                chartMode === "race_pace"
+                  ? `${point.predicted_lap_s.toFixed(3)}s`
+                  : formatPct(point.tyre_degradation_pct ?? 0);
+              return (
+                <button
+                  key={`${strategy.strategy_label}-${point.lap_number}-${idx}`}
+                  type="button"
+                  onClick={() => setSelectedLapIdx(idx)}
+                  className={`flex-1 rounded-t-sm transition ${
+                    activeBar ? "bg-white" : "bg-accent/80 hover:bg-accent"
+                  }`}
+                  style={{ height: `${height}%` }}
+                  title={`Lap ${point.lap_number}: ${label}`}
+                  aria-label={`Lap ${point.lap_number}`}
+                />
+              );
+            })}
+          </div>
+        )}
 
         {selectedPoint && (
           <div className="grid gap-3 border border-white/10 bg-ink-850/70 p-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -230,18 +319,16 @@ export function DriverDetail({ detail }: { detail: StrategyDetail }) {
               <p className="font-mono text-xl text-accent">
                 {formatPct(selectedPoint.tyre_degradation_pct ?? 0)}
               </p>
-              <p className="text-[11px] text-muted">vs fresh tyre pace</p>
             </div>
             <div>
               <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Life used</p>
               <p className="font-mono text-xl text-white">
                 {(selectedPoint.tyre_life_used_pct ?? 0).toFixed(1)}%
               </p>
-              <p className="text-[11px] text-muted">through this stint window</p>
             </div>
             <div className="sm:col-span-2 lg:col-span-5 grid gap-3 border-t border-white/10 pt-3 sm:grid-cols-2">
               <div>
-                <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Predicted lap (race pace)</p>
+                <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Predicted lap</p>
                 <p className="font-mono text-lg text-white">{selectedPoint.predicted_lap_s.toFixed(3)}s</p>
               </div>
               <div>
@@ -253,50 +340,6 @@ export function DriverDetail({ detail }: { detail: StrategyDetail }) {
             </div>
           </div>
         )}
-      </div>
-
-      <div>
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-[11px] uppercase tracking-[0.16em] text-muted">
-            Alternatives — click to compare
-          </h3>
-          {timeDelta != null && (
-            <p className="font-mono text-xs text-fog">
-              vs best: <span className="text-accent">{formatDelta(timeDelta)}</span>
-            </p>
-          )}
-        </div>
-        <ul className="space-y-2">
-          {alternatives.map((alt, idx) => {
-            const active = selectedAlt === idx;
-            const delta = alt.predicted_race_time_s - best.predicted_race_time_s;
-            return (
-              <li key={alt.strategy_label}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedAlt(active ? null : idx)}
-                  className={`flex w-full flex-wrap items-center justify-between gap-3 border px-4 py-3 text-left transition ${
-                    active
-                      ? "border-accent bg-accent/15"
-                      : "border-white/5 bg-ink-900/40 hover:border-white/20"
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="font-mono text-xs text-fog">{alt.stops}-stop</span>
-                    <CompoundPills compounds={alt.compounds} />
-                    <span className="font-mono text-xs text-muted">@{alt.pit_laps.join(", ")}</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="font-mono text-sm text-white">
-                      {formatRaceTime(alt.predicted_race_time_s)}
-                    </span>
-                    <span className="ml-3 font-mono text-xs text-muted">{formatDelta(delta)}</span>
-                  </div>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
       </div>
     </section>
   );

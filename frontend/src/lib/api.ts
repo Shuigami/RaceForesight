@@ -59,12 +59,19 @@ export type StintPaceCurve = {
   points: PacePoint[];
 };
 
+export type StrategyOption = {
+  strategy: DriverStrategy;
+  stint_curves: StintPaceCurve[];
+  is_recommended: boolean;
+};
+
 export type StrategyDetail = {
   meeting: MeetingSummary;
   best: DriverStrategy;
   alternatives: DriverStrategy[];
   degradation_curve: PacePoint[];
   stint_curves: StintPaceCurve[];
+  options: StrategyOption[];
   model_version: string;
 };
 

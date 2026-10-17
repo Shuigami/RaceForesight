@@ -68,6 +68,12 @@ class StintPaceCurve(BaseModel):
     points: list[PacePoint] = Field(default_factory=list)
 
 
+class StrategyOption(BaseModel):
+    strategy: DriverStrategy
+    stint_curves: list[StintPaceCurve] = Field(default_factory=list)
+    is_recommended: bool = False
+
+
 class StrategyDetail(BaseModel):
     meeting: MeetingSummary
     best: DriverStrategy
@@ -75,6 +81,8 @@ class StrategyDetail(BaseModel):
     # Kept for backward compatibility: first stint race-pace points
     degradation_curve: list[dict] = Field(default_factory=list)
     stint_curves: list[StintPaceCurve] = Field(default_factory=list)
+    # Recommended first, then alternatives — used by interactive detail UI
+    options: list[StrategyOption] = Field(default_factory=list)
     model_version: str = "xgboost-lap-v1"
 
 
