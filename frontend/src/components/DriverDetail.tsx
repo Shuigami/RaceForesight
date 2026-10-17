@@ -39,6 +39,12 @@ export function DriverDetail({ detail }: { detail: StrategyDetail }) {
         ))}
       </div>
 
+      <p className="text-sm text-fog">
+        Stints show the recommended compound windows. The chart is modelled lap time vs tyre age on the
+        first stint compound — rising bars mean the tyre is slowing the car down. Alternatives are the
+        next-best plans we simulated (higher total race time).
+      </p>
+
       <div>
         <h3 className="mb-3 text-[11px] uppercase tracking-[0.16em] text-muted">
           Tyre degradation · {degradation_curve[0]?.compound ?? "—"}

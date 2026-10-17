@@ -10,6 +10,7 @@ import {
   type StrategyResponse,
 } from "@/lib/api";
 import { DriverDetail } from "./DriverDetail";
+import { ExplainPanel } from "./ExplainPanel";
 import { StrategyGrid } from "./StrategyGrid";
 
 export function RaceForesightApp() {
@@ -95,6 +96,22 @@ export function RaceForesightApp() {
           <p className="max-w-xl text-base text-fog md:text-lg">
             XGBoost lap-time estimates and pit-window simulation for the full F1 grid — defaulting to the next Grand Prix.
           </p>
+
+          <ExplainPanel title="How to read these results">
+            <p>
+              Each row is the <strong className="text-white">best dry tyre plan</strong> we found for that
+              driver (1-stop or 2-stop), not a race finishing prediction.
+            </p>
+            <p>
+              <strong className="text-white">Predicted time</strong> is the sum of modelled lap times plus
+              pit loss. Lower is better for strategy comparison — the table is sorted by that time so you
+              can scan pace, but it is <em>not</em> an official classification.
+            </p>
+            <p>
+              Click a driver for stint breakdown, alternatives, and a tyre degradation curve. For who we
+              think finishes where, open <strong className="text-white">Classification</strong>.
+            </p>
+          </ExplainPanel>
 
           <div className="flex flex-wrap items-end gap-4 pt-2">
             <label className="flex min-w-[240px] flex-col gap-2">

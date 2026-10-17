@@ -8,6 +8,7 @@ import {
   type ClassificationResponse,
   type MeetingSummary,
 } from "@/lib/api";
+import { ExplainPanel } from "./ExplainPanel";
 
 export function ClassificationBoard() {
   const [races, setRaces] = useState<MeetingSummary[]>([]);
@@ -67,6 +68,24 @@ export function ClassificationBoard() {
           Finishing order is the main output. Estimated race times are secondary context derived from
           the strategy simulator.
         </p>
+
+        <ExplainPanel title="How to read these results">
+          <p>
+            <strong className="text-white">Pos</strong> is our predicted finishing order — that is the
+            Phase 2 product. Drivers are ranked from the strategy simulator’s race-time estimates
+            (pace + optimal stops), not from bookmaker odds.
+          </p>
+          <p>
+            <strong className="text-white">Est. time / Gap</strong> are supporting detail only. They help
+            see how close the model thinks cars are, but small gaps should not be over-interpreted.
+          </p>
+          <p>
+            <strong className="text-white">Confidence</strong> is a simple heuristic that shrinks as
+            predicted position gets worse — not a calibrated win probability. Backtest quality lives on
+            the <strong className="text-white">Models</strong> page (Spearman, top-3 hit rate, etc.).
+          </p>
+        </ExplainPanel>
+
         <label className="flex min-w-[240px] max-w-md flex-col gap-2">
           <span className="text-[11px] uppercase tracking-[0.16em] text-muted">Grand Prix</span>
           <select

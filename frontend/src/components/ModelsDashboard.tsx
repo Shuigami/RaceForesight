@@ -7,6 +7,8 @@ import {
   type ModelScore,
   type ModelsMetricsResponse,
 } from "@/lib/api";
+import { METRIC_GLOSSARY, metricInfo } from "@/lib/metricGlossary";
+import { ExplainPanel } from "./ExplainPanel";
 
 function metricEntries(model: ModelScore) {
   return Object.entries(model.metrics).filter(([, v]) => v !== null && v !== undefined);
@@ -83,6 +85,22 @@ export function ModelsDashboard() {
         </button>
       </header>
 
+      <ExplainPanel title="How to read these scores">
+        <p>
+          <strong className="text-white">Lap-time models</strong> are scored on held-out historical laps
+          (later sessions than the training window). MAE / RMSE tell you how wrong a single lap prediction
+          is, in seconds.
+        </p>
+        <p>
+          <strong className="text-white">Classification</strong> is scored against official race results
+          (OpenF1 <code className="text-white">session_result</code>). Here we care about order — Spearman /
+          Kendall — more than exact race times.
+        </p>
+        <p>
+          Hover any metric row for a one-line reminder; full definitions are in the glossary below.
+        </p>
+      </ExplainPanel>
+
       {error && (
         <div className="border border-accent/40 bg-accent/10 px-4 py-3 text-sm text-white">
           <p>{error}</p>
@@ -129,16 +147,52 @@ export function ModelsDashboard() {
                 <p className="mb-4 text-xs leading-relaxed text-fog">{model.description}</p>
                 <p className="mb-3 font-mono text-[11px] text-muted">{model.version}</p>
                 <dl className="space-y-2">
-                  {metricEntries(model).map(([key, value]) => (
-                    <div key={key} className="flex items-baseline justify-between gap-3 border-t border-white/5 pt-2">
-                      <dt className="text-[11px] uppercase tracking-[0.12em] text-muted">{key}</dt>
-                      <dd className="font-mono text-sm text-white">{formatMetric(key, value)}</dd>
-                    </div>
-                  ))}
+                  {metricEntries(model).map(([key, value]) => {
+                    const info = metricInfo(key);
+                    return (
+                      <div
+                        key={key}
+                        className="border-t border-white/5 pt-2"
+                        title={`${info.short}. ${info.detail}`}
+                      >
+                        <div className="flex items-baseline justify-between gap-3">
+                          <dt className="text-[11px] uppercase tracking-[0.12em] text-muted">
+                            {info.label}
+                          </dt>
+                          <dd className="font-mono text-sm text-white">{formatMetric(key, value)}</dd>
+                        </div>
+                        <p className="mt-1 text-[11px] leading-snug text-fog/90">{info.short}</p>
+                      </div>
+                    );
+                  })}
                 </dl>
               </article>
             ))}
           </div>
+
+          <section className="border border-white/10 bg-panel/60 p-5 backdrop-blur">
+            <h2 className="font-display text-2xl tracking-wide text-white">Metric glossary</h2>
+            <p className="mt-1 mb-5 text-sm text-fog">
+              Plain-language definitions for every score shown above.
+            </p>
+            <div className="grid gap-4 md:grid-cols-2">
+              {Object.entries(METRIC_GLOSSARY).map(([key, info]) => (
+                <div key={key} className="border border-white/5 bg-ink-900/40 p-4">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className="font-display text-lg tracking-wide text-white">{info.label}</h3>
+                    <span className="font-mono text-[10px] text-muted">{key}</span>
+                  </div>
+                  <p className="mt-1 text-xs uppercase tracking-[0.12em] text-accent">{info.short}</p>
+                  <p className="mt-2 text-sm leading-relaxed text-fog">{info.detail}</p>
+                  {info.goodWhen && (
+                    <p className="mt-2 text-xs text-muted">
+                      <span className="text-white">Rule of thumb:</span> {info.goodWhen}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
 
           {data.notes.length > 0 && (
             <section className="border border-white/10 bg-ink-850/60 p-4">
