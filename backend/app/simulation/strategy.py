@@ -54,8 +54,9 @@ class StrategySimulator:
         offsets: dict[int, float] = {}
         try:
             train = self.pipeline.build_training_frame(
-                years=[settings.default_season, settings.default_season - 1, settings.default_season - 2],
-                max_sessions=12,
+                years=[settings.default_season, settings.default_season - 1],
+                max_sessions=16,
+                completed_only=True,
             )
         except Exception:
             train = pd.DataFrame()

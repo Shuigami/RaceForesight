@@ -151,11 +151,22 @@ class RaceDataPipeline:
             df.to_parquet(parquet_dir / f"{n}.parquet", index=False)
         return result
 
-    def build_training_frame(self, years: list[int] | None = None, max_sessions: int | None = None) -> pd.DataFrame:
+    def build_training_frame(
+        self,
+        years: list[int] | None = None,
+        max_sessions: int | None = None,
+        *,
+        completed_only: bool = True,
+    ) -> pd.DataFrame:
         sessions = self.list_race_sessions(years)
         if sessions.empty:
             return pd.DataFrame()
         sessions = sessions.sort_values("date_start")
+        if completed_only and "date_start" in sessions.columns:
+            now = datetime.now(timezone.utc)
+            starts = pd.to_datetime(sessions["date_start"], utc=True, errors="coerce")
+            # Keep races that have already started (plus a small buffer for ongoing sessions)
+            sessions = sessions.loc[starts <= now + pd.Timedelta(hours=3)].copy()
         if max_sessions:
             sessions = sessions.tail(max_sessions)
 
@@ -164,6 +175,8 @@ class RaceDataPipeline:
             session_key = int(sess["session_key"])
             meeting_key = int(sess["meeting_key"])
             data = self.ingest_session(session_key)
+            if data["laps"].empty:
+                continue
             lap_df = self._join_lap_features(
                 data,
                 session_key=session_key,
@@ -202,9 +215,20 @@ class RaceDataPipeline:
         compound_rows: list[dict] = []
         if not stints.empty:
             for _, stint in stints.iterrows():
-                lap_start = int(stint.get("lap_start") or 1)
-                lap_end = int(stint.get("lap_end") or lap_start)
-                tyre_age0 = int(stint.get("tyre_age_at_start") or 0)
+                if pd.isna(stint.get("driver_number")):
+                    continue
+                lap_start_raw = stint.get("lap_start")
+                lap_end_raw = stint.get("lap_end")
+                if pd.isna(lap_start_raw):
+                    continue
+                lap_start = int(lap_start_raw)
+                lap_end = int(lap_end_raw) if pd.notna(lap_end_raw) else lap_start
+                if lap_end < lap_start:
+                    continue
+                tyre_age_raw = stint.get("tyre_age_at_start")
+                tyre_age0 = int(tyre_age_raw) if pd.notna(tyre_age_raw) else 0
+                stint_raw = stint.get("stint_number")
+                stint_number = int(stint_raw) if pd.notna(stint_raw) else 1
                 for lap_no in range(lap_start, lap_end + 1):
                     compound_rows.append(
                         {
@@ -212,7 +236,7 @@ class RaceDataPipeline:
                             "lap_number": lap_no,
                             "compound": str(stint.get("compound") or "UNKNOWN"),
                             "tyre_age": tyre_age0 + (lap_no - lap_start),
-                            "stint_number": int(stint.get("stint_number") or 1),
+                            "stint_number": stint_number,
                         }
                     )
         compound_df = pd.DataFrame(compound_rows)

@@ -124,7 +124,9 @@ export function fetchModelMetrics() {
 }
 
 export function runModelEvaluation() {
-  return postJson<ModelsMetricsResponse>("/api/models/evaluate?years=2024,2025&max_sessions=12&ranking_races=6");
+  return postJson<ModelsMetricsResponse>(
+    "/api/models/evaluate?years=2025,2026&max_sessions=40&ranking_races=8",
+  );
 }
 
 export function formatRaceTime(seconds: number): string {

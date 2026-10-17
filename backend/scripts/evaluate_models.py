@@ -15,9 +15,9 @@ from app.evaluation.metrics import ModelEvaluator
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate RaceForesight models")
-    parser.add_argument("--years", default="2024,2025")
-    parser.add_argument("--max-sessions", type=int, default=12)
-    parser.add_argument("--ranking-races", type=int, default=6)
+    parser.add_argument("--years", default="2025,2026")
+    parser.add_argument("--max-sessions", type=int, default=40)
+    parser.add_argument("--ranking-races", type=int, default=8)
     args = parser.parse_args()
     years = [int(y.strip()) for y in args.years.split(",") if y.strip()]
 

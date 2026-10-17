@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-17T19:45:46.960840+00:00",
+  "generated_at": "2026-10-17T20:04:25.360779+00:00",
   "models": [
     {
       "name": "Lap-time XGBoost",
@@ -7,10 +7,10 @@
       "version": "xgboost-lap-v1",
       "primary": true,
       "metrics": {
-        "mae_s": 0.7678,
-        "rmse_s": 1.1271,
-        "n_train": 11502,
-        "n_test": 2876,
+        "mae_s": 1.6174,
+        "rmse_s": 2.1428,
+        "n_train": 31020,
+        "n_test": 7755,
         "target": "circuit_residual"
       },
       "description": "Primary lap-time model used by strategy simulation (circuit baseline + residual)."
@@ -21,11 +21,11 @@
       "version": "rf-lap-v1",
       "primary": false,
       "metrics": {
-        "mae_s": 0.849,
-        "rmse_s": 1.1706,
-        "r2": 0.9908,
-        "n_train": 9684,
-        "n_test": 2421,
+        "mae_s": 1.7135,
+        "rmse_s": 2.1895,
+        "r2": 0.9581,
+        "n_train": 29312,
+        "n_test": 7328,
         "target": "circuit_residual"
       },
       "description": "Benchmark regressor on the same features/split as XGBoost (not used in live inference)."
@@ -36,15 +36,22 @@
       "version": "ranking-pace-v1",
       "primary": true,
       "metrics": {
-        "races_evaluated": 6,
-        "spearman": 0.3919,
-        "kendall_tau": 0.2809,
-        "top3_hit_rate": 0.4444,
-        "mae_position": 4.7024
+        "races_evaluated": 8,
+        "spearman": 0.8934,
+        "kendall_tau": 0.7776,
+        "top3_hit_rate": 0.8333,
+        "mae_position": 1.9007
       },
       "description": "Backtest of finishing-order prediction vs OpenF1 session_result. Same pace-ranking approach as the live Classification page (independent of Strategy tyre-window search)."
     }
   ],
-  "evaluation_races": 6,
-  "notes": []
+  "evaluation_races": 8,
+  "notes": [
+    "session_result failed for 11436: Client error '404 Not Found' for url 'https://api.openf1.org/v1/session_result?session_key=11436'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+    "session_result failed for 11428: Client error '404 Not Found' for url 'https://api.openf1.org/v1/session_result?session_key=11428'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+    "session_result failed for 11420: Client error '404 Not Found' for url 'https://api.openf1.org/v1/session_result?session_key=11420'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+    "session_result failed for 11412: Client error '404 Not Found' for url 'https://api.openf1.org/v1/session_result?session_key=11412'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+    "session_result failed for 11404: Client error '404 Not Found' for url 'https://api.openf1.org/v1/session_result?session_key=11404'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+    "session_result failed for 11396: Client error '404 Not Found' for url 'https://api.openf1.org/v1/session_result?session_key=11396'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404"
+  ]
 }

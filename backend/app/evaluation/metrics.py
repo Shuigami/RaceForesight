@@ -53,8 +53,12 @@ class ModelEvaluator:
         max_sessions: int = 12,
         ranking_races: int = 6,
     ) -> ModelsMetricsResponse:
-        years = years or [2024, 2025]
-        frame = self.pipeline.build_training_frame(years=years, max_sessions=max_sessions)
+        years = years or [2025, 2026]
+        frame = self.pipeline.build_training_frame(
+            years=years,
+            max_sessions=max_sessions,
+            completed_only=True,
+        )
         if frame.empty:
             raise RuntimeError("No training data available for evaluation")
 

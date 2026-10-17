@@ -25,8 +25,10 @@ pip install -r requirements.txt
 Train the lap-time model (downloads/caches OpenF1 race data — be polite with rate limits):
 
 ```bash
-python scripts/train_model.py --years 2024,2025 --max-sessions 15
+python scripts/train_model.py --years 2025,2026 --max-sessions 50
 ```
+
+Only completed races with lap data are used by default (future calendar slots are skipped).
 
 Start the API:
 
@@ -73,7 +75,7 @@ Use `meeting_key=0` to resolve the default (next) race.
 Evaluate models (writes `backend/app/models/artifacts/model_metrics.json`):
 
 ```bash
-python scripts/evaluate_models.py --years 2024,2025 --ranking-races 6
+python scripts/evaluate_models.py --years 2025,2026 --ranking-races 8
 ```
 
 ## How it works

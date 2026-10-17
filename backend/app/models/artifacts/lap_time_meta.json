@@ -1,10 +1,10 @@
 {
   "version": "xgboost-lap-v1",
   "target": "circuit_residual",
-  "n_train": 11502,
-  "n_test": 2876,
-  "mae": 0.7677608728408813,
-  "rmse": 1.127091106780505,
+  "n_train": 31020,
+  "n_test": 7755,
+  "mae": 1.6173877716064453,
+  "rmse": 2.142846284566344,
   "feature_columns": [
     "tyre_age",
     "lap_number",
