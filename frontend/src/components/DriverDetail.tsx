@@ -172,10 +172,9 @@ export function DriverDetail({ detail }: { detail: StrategyDetail }) {
             </>
           ) : (
             <>
-              <strong className="text-white">Tyre wear %</strong> is pace loss vs a fresh tyre (fuel fixed).
-              Fresh = <strong className="text-white">0%</strong> / tyre effect{" "}
-              <strong className="text-white">0.000s</strong> (shortest bar). Wear is forced{" "}
-              <em>non-decreasing</em> with age — a tyre cannot get faster mid-stint.
+              <strong className="text-white">Tyre wear %</strong> grows with tyre age (compound wear rate +
+              model slowdowns when they make sense). Fresh = <strong className="text-white">0%</strong>.
+              Bars should rise across the stint — Soft faster than Hard.
             </>
           )}{" "}
           Click a bar for details.

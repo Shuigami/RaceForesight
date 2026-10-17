@@ -22,37 +22,38 @@ from app.models.lap_time import LapTimeModel
 
 DRY_COMPOUNDS = ("SOFT", "MEDIUM", "HARD")
 
-# Floor wear (s/lap of tyre age) so "tyre only" never invents a healing tyre
+# Pace loss per lap of tyre age (s) — used as the primary wear curve.
+# Soft wears fastest; hard slowest. Tuned as a clear UI/strategy prior, not a lab curve.
 _COMPOUND_WEAR_S_PER_LAP = {
-    "SOFT": 0.055,
-    "MEDIUM": 0.035,
-    "HARD": 0.022,
+    "SOFT": 0.065,
+    "MEDIUM": 0.040,
+    "HARD": 0.025,
 }
 
 
 def _monotonic_tyre_loss_seconds(raw_effects: list[float], compound: str) -> list[float]:
-    """Turn raw model deltas into non-decreasing pace loss vs fresh rubber.
+    """Build a stint wear curve that always grows with tyre age.
 
-    XGBoost often inverts tyre_age (confounded with fuel in training). We:
-    1) flip if the overall slope says older = faster,
-    2) take a running max so the tyre cannot "heal",
-    3) apply a compound wear floor so loss grows with age.
+    Raw XGBoost tyre deltas are often inverted or noisy (fuel confound). Flipping them
+    and taking a running-max locked an early spike for the whole stint (flat chart).
+
+    Instead:
+    1) physical wear = rate * laps_into_stint (always increasing),
+    2) only add model slowdown when it is *positive* vs fresh (ignore "faster when older"),
+    3) running-max so wear never decreases.
     """
     if not raw_effects:
         return []
-    effects = list(raw_effects)
-    # Anchor at first sample
-    effects = [e - effects[0] for e in effects]
-    if len(effects) >= 2 and effects[-1] < effects[0]:
-        effects = [-e for e in effects]
+    anchored = [e - raw_effects[0] for e in raw_effects]
+    rate = _COMPOUND_WEAR_S_PER_LAP.get(compound.upper(), 0.03)
 
     mono: list[float] = []
     running = 0.0
-    rate = _COMPOUND_WEAR_S_PER_LAP.get(compound.upper(), 0.03)
-    for i, e in enumerate(effects):
-        running = max(running, e, 0.0)
-        # Physical floor: at least `rate` seconds lost per lap of age in this stint
-        running = max(running, rate * i)
+    for i, e in enumerate(anchored):
+        physical = rate * i
+        # Ignore negative model deltas ("tyre got faster") — those are artefacts
+        model_slowdown = max(0.0, e)
+        running = max(running, physical, model_slowdown)
         mono.append(running)
     return mono
 
