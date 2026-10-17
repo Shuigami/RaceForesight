@@ -218,18 +218,26 @@ class StrategySimulator:
         ]
         tyre_preds = self.model.predict_laps(pd.DataFrame(tyre_only_rows))
         tyre_base = float(tyre_preds[0]) if len(tyre_preds) else 0.0
+        # Typical soft/medium/hard stint horizon for "life used" percentage
+        life_horizon = max(len(preds) - 1, 1)
 
         points: list[PacePoint] = []
         for i, pred in enumerate(preds):
             lap_number = stint.lap_start + i
             tyre_age = stint.tyre_age_at_start + i
+            tyre_pred = float(tyre_preds[i])
+            effect_s = tyre_pred - tyre_base
+            deg_pct = (effect_s / tyre_base * 100.0) if tyre_base else 0.0
+            life_used = (i / life_horizon) * 100.0
             points.append(
                 PacePoint(
                     lap_number=lap_number,
                     tyre_age=tyre_age,
                     fuel_proxy=max(1, total_laps - lap_number + 1),
                     predicted_lap_s=round(float(pred), 3),
-                    tyre_effect_s=round(float(tyre_preds[i]) - tyre_base, 3),
+                    tyre_effect_s=round(effect_s, 3),
+                    tyre_degradation_pct=round(deg_pct, 3),
+                    tyre_life_used_pct=round(life_used, 2),
                     compound=stint.compound,
                 )
             )
@@ -314,6 +322,8 @@ class StrategySimulator:
                 "lap_number": p.lap_number,
                 "fuel_proxy": p.fuel_proxy,
                 "tyre_effect_s": p.tyre_effect_s,
+                "tyre_degradation_pct": p.tyre_degradation_pct,
+                "tyre_life_used_pct": p.tyre_life_used_pct,
             }
             for p in (stint_curves[0].points if stint_curves else [])
         ]

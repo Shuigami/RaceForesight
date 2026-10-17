@@ -12,6 +12,21 @@ function formatDelta(seconds: number): string {
   return `${sign}${seconds.toFixed(3)}s`;
 }
 
+function formatPct(pct: number): string {
+  const sign = pct >= 0 ? "+" : "";
+  return `${sign}${pct.toFixed(2)}%`;
+}
+
+/** Tyre-wear chart values: 0% at fresh rubber (shortest bar), rising as the tyre loses pace. */
+function tyreWearChartValues(points: PacePoint[]): { values: number[]; flipped: boolean } {
+  const raw = points.map((p) => p.tyre_degradation_pct ?? 0);
+  if (raw.length < 2) return { values: raw, flipped: false };
+  // If the model says older rubber is "faster", flip so the chart still reads as wear↑
+  const flipped = raw[raw.length - 1] < raw[0];
+  const oriented = flipped ? raw.map((v) => -v) : raw;
+  return { values: oriented, flipped };
+}
+
 export function DriverDetail({ detail }: { detail: StrategyDetail }) {
   const { best, alternatives, stint_curves, degradation_curve } = detail;
   const curves =
@@ -28,7 +43,7 @@ export function DriverDetail({ detail }: { detail: StrategyDetail }) {
         ];
 
   const [selectedStint, setSelectedStint] = useState(0);
-  const [chartMode, setChartMode] = useState<ChartMode>("race_pace");
+  const [chartMode, setChartMode] = useState<ChartMode>("tyre_only");
   const [selectedLapIdx, setSelectedLapIdx] = useState(0);
   const [selectedAlt, setSelectedAlt] = useState<number | null>(null);
 
@@ -39,15 +54,27 @@ export function DriverDetail({ detail }: { detail: StrategyDetail }) {
   }, [best.driver_number, best.strategy_label]);
 
   const activeCurve = curves[Math.min(selectedStint, curves.length - 1)] ?? curves[0];
-  const points = activeCurve?.points ?? [];
+  const points = useMemo(() => activeCurve?.points ?? [], [activeCurve]);
 
-  const values = useMemo(
-    () => points.map((p) => (chartMode === "race_pace" ? p.predicted_lap_s : p.tyre_effect_s)),
-    [points, chartMode],
-  );
-  const maxVal = Math.max(...values, chartMode === "tyre_only" ? 0.01 : 1);
-  const minVal = Math.min(...values, chartMode === "tyre_only" ? 0 : maxVal);
-  const range = Math.max(maxVal - minVal, 0.01);
+  const tyreWear = useMemo(() => tyreWearChartValues(points), [points]);
+
+  const values = useMemo(() => {
+    if (chartMode === "race_pace") return points.map((p) => p.predicted_lap_s);
+    return tyreWear.values;
+  }, [points, chartMode, tyreWear.values]);
+
+  // Race pace: min-max scale. Tyre wear: zero-anchored so 0% (fresh) is the shortest bar.
+  const { minVal, range } = useMemo(() => {
+    if (values.length === 0) return { minVal: 0, range: 1 };
+    if (chartMode === "race_pace") {
+      const maxV = Math.max(...values);
+      const minV = Math.min(...values);
+      return { minVal: minV, range: Math.max(maxV - minV, 0.01) };
+    }
+    const maxV = Math.max(...values, 0.05);
+    const minV = Math.min(0, ...values);
+    return { minVal: minV, range: Math.max(maxV - minV, 0.05) };
+  }, [values, chartMode]);
 
   const selectedPoint = points[Math.min(selectedLapIdx, Math.max(points.length - 1, 0))] ?? null;
   const comparedAlt = selectedAlt != null ? alternatives[selectedAlt] : null;
@@ -137,7 +164,7 @@ export function DriverDetail({ detail }: { detail: StrategyDetail }) {
                   : "border border-white/15 text-muted hover:text-white"
               }`}
             >
-              Tyre wear only
+              Tyre wear %
             </button>
           </div>
         </div>
@@ -145,27 +172,37 @@ export function DriverDetail({ detail }: { detail: StrategyDetail }) {
         <p className="text-sm text-fog">
           {chartMode === "race_pace" ? (
             <>
-              <strong className="text-white">Race pace</strong> = predicted lap time with fuel burn + tyre
-              age + lap number together. Early laps often look slow because the car is heavy — that is not
-              tyre degradation.
+              <strong className="text-white">Race pace</strong> mixes fuel + tyre + lap number. Early bars
+              can look tall because the car is heavy — not because the tyre is worn.
             </>
           ) : (
             <>
-              <strong className="text-white">Tyre wear only</strong> keeps fuel/lap fixed and varies tyre age.
-              Bars rising to the right mean the compound is losing performance.
+              <strong className="text-white">Tyre wear %</strong> is pace loss vs a fresh tyre (fuel fixed).
+              Fresh rubber = <strong className="text-white">0%</strong> (shortest bar); higher bars = more
+              degradation.
+              {tyreWear.flipped && (
+                <> Model slope was inverted — chart oriented so wear still rises to the right.</>
+              )}
             </>
           )}{" "}
           Click a bar for details.
         </p>
 
-        <div className="flex h-36 items-end gap-1 border border-white/10 bg-ink-900/50 p-3">
+        <div className="relative flex h-36 items-end gap-1 border border-white/10 bg-ink-900/50 p-3">
+          {chartMode === "tyre_only" && (
+            <div className="pointer-events-none absolute inset-x-3 top-3 flex justify-between text-[10px] uppercase tracking-wider text-muted">
+              <span>0% fresh</span>
+              <span>more wear →</span>
+            </div>
+          )}
           {points.map((point, idx) => {
-            const value = chartMode === "race_pace" ? point.predicted_lap_s : point.tyre_effect_s;
-            const height =
-              chartMode === "tyre_only"
-                ? Math.max(8, ((value - minVal) / range) * 100)
-                : Math.max(8, ((value - minVal) / range) * 100);
+            const value = values[idx] ?? 0;
+            const height = Math.max(6, ((value - minVal) / range) * 100);
             const active = selectedLapIdx === idx;
+            const label =
+              chartMode === "race_pace"
+                ? `${point.predicted_lap_s.toFixed(3)}s`
+                : formatPct(point.tyre_degradation_pct ?? 0);
             return (
               <button
                 key={`${point.lap_number}-${idx}`}
@@ -175,9 +212,7 @@ export function DriverDetail({ detail }: { detail: StrategyDetail }) {
                   active ? "bg-white" : "bg-accent/80 hover:bg-accent"
                 }`}
                 style={{ height: `${height}%` }}
-                title={`Lap ${point.lap_number}: ${
-                  chartMode === "race_pace" ? `${value.toFixed(3)}s` : formatDelta(value)
-                }`}
+                title={`Lap ${point.lap_number}: ${label}`}
                 aria-label={`Lap ${point.lap_number}`}
               />
             );
@@ -185,7 +220,7 @@ export function DriverDetail({ detail }: { detail: StrategyDetail }) {
         </div>
 
         {selectedPoint && (
-          <div className="grid gap-3 border border-white/10 bg-ink-850/70 p-4 sm:grid-cols-4">
+          <div className="grid gap-3 border border-white/10 bg-ink-850/70 p-4 sm:grid-cols-2 lg:grid-cols-5">
             <div>
               <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Lap</p>
               <p className="font-mono text-xl text-white">{selectedPoint.lap_number}</p>
@@ -197,22 +232,32 @@ export function DriverDetail({ detail }: { detail: StrategyDetail }) {
             <div>
               <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Fuel proxy</p>
               <p className="font-mono text-xl text-white">{selectedPoint.fuel_proxy}</p>
-              <p className="text-[11px] text-muted">laps of fuel left (proxy)</p>
             </div>
             <div>
-              <p className="text-[11px] uppercase tracking-[0.14em] text-muted">
-                {chartMode === "race_pace" ? "Predicted lap" : "Tyre effect"}
-              </p>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Degradation</p>
               <p className="font-mono text-xl text-accent">
-                {chartMode === "race_pace"
-                  ? `${selectedPoint.predicted_lap_s.toFixed(3)}s`
-                  : formatDelta(selectedPoint.tyre_effect_s)}
+                {formatPct(selectedPoint.tyre_degradation_pct ?? 0)}
               </p>
-              {chartMode === "race_pace" && (
-                <p className="text-[11px] text-muted">
-                  tyre-only {formatDelta(selectedPoint.tyre_effect_s)}
+              <p className="text-[11px] text-muted">vs fresh tyre pace</p>
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Life used</p>
+              <p className="font-mono text-xl text-white">
+                {(selectedPoint.tyre_life_used_pct ?? 0).toFixed(1)}%
+              </p>
+              <p className="text-[11px] text-muted">through this stint window</p>
+            </div>
+            <div className="sm:col-span-2 lg:col-span-5 grid gap-3 border-t border-white/10 pt-3 sm:grid-cols-2">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Predicted lap (race pace)</p>
+                <p className="font-mono text-lg text-white">{selectedPoint.predicted_lap_s.toFixed(3)}s</p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Tyre effect</p>
+                <p className="font-mono text-lg text-white">
+                  {formatDelta(selectedPoint.tyre_effect_s)}
                 </p>
-              )}
+              </div>
             </div>
           </div>
         )}

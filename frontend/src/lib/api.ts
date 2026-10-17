@@ -46,6 +46,8 @@ export type PacePoint = {
   fuel_proxy: number;
   predicted_lap_s: number;
   tyre_effect_s: number;
+  tyre_degradation_pct: number;
+  tyre_life_used_pct: number;
   compound: string;
 };
 

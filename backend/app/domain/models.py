@@ -55,6 +55,8 @@ class PacePoint(BaseModel):
     fuel_proxy: int
     predicted_lap_s: float
     tyre_effect_s: float
+    tyre_degradation_pct: float
+    tyre_life_used_pct: float
     compound: str
 
 
