@@ -189,7 +189,7 @@ class ModelEvaluator:
                 ModelScore(
                     name="Classification (pace ranking)",
                     kind="classification",
-                    version="ranking-strategy-v1",
+                    version="ranking-pace-v1",
                     primary=True,
                     metrics={},
                     description="No historical race sessions available for backtest.",
@@ -302,12 +302,13 @@ class ModelEvaluator:
         score = ModelScore(
             name="Classification (pace ranking)",
             kind="classification",
-            version="ranking-strategy-v1",
+            version="ranking-pace-v1",
             primary=True,
             metrics=metrics,
             description=(
                 "Backtest of finishing-order prediction vs OpenF1 session_result. "
-                "Uses pace-offset ranking (lightweight proxy of the live strategy-time ranking)."
+                "Same pace-ranking approach as the live Classification page "
+                "(independent of Strategy tyre-window search)."
             ),
         )
         return score, evaluated, notes

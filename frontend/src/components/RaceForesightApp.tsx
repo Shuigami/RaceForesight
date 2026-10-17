@@ -99,17 +99,18 @@ export function RaceForesightApp() {
 
           <ExplainPanel title="How to read these results">
             <p>
-              Each row is the <strong className="text-white">best dry tyre plan</strong> we found for that
-              driver (1-stop or 2-stop), not a race finishing prediction.
+              This page answers: <strong className="text-white">which tyre plan is fastest for each car?</strong>{" "}
+              Each row is the best dry 1-stop / 2-stop window we simulated for that driver.
             </p>
             <p>
-              <strong className="text-white">Predicted time</strong> is the sum of modelled lap times plus
-              pit loss. Lower is better for strategy comparison — the table is sorted by that time so you
-              can scan pace, but it is <em>not</em> an official classification.
+              <strong className="text-white">Strategy race time</strong> = modelled laps under that plan +
+              pit loss. Times here assume every driver runs their own optimal strategy — useful to compare
+              plans, not to call the race result.
             </p>
             <p>
-              Click a driver for stint breakdown, alternatives, and a tyre degradation curve. For who we
-              think finishes where, open <strong className="text-white">Classification</strong>.
+              <strong className="text-white">Classification</strong> is a different model: relative race
+              pace with a shared race shape. Its order and times will not match this table. Click a driver
+              for stints, alternatives, and degradation.
             </p>
           </ExplainPanel>
 

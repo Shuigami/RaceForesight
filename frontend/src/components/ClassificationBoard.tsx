@@ -65,24 +65,24 @@ export function ClassificationBoard() {
           Predicted classification
         </h1>
         <p className="max-w-2xl text-fog">
-          Finishing order is the main output. Estimated race times are secondary context derived from
-          the strategy simulator.
+          Who finishes where, from relative race pace — a different question than Strategy&apos;s
+          per-driver tyre optimisation.
         </p>
 
-        <ExplainPanel title="How to read these results">
+        <ExplainPanel title="Strategy vs Classification">
           <p>
-            <strong className="text-white">Pos</strong> is our predicted finishing order — that is the
-            Phase 2 product. Drivers are ranked from the strategy simulator’s race-time estimates
-            (pace + optimal stops), not from bookmaker odds.
+            <strong className="text-white">Strategy</strong> searches tyre compounds and pit windows so
+            each driver gets their own optimal plan (and a strategy race time under that plan).
           </p>
           <p>
-            <strong className="text-white">Est. time / Gap</strong> are supporting detail only. They help
-            see how close the model thinks cars are, but small gaps should not be over-interpreted.
+            <strong className="text-white">Classification</strong> ranks the grid with a shared dry-race
+            shape: circuit baseline lap + each driver&apos;s recent pace offset + one typical pit stop.
+            No per-driver tyre-window search — so <em>est. times here will not match Strategy</em>.
           </p>
           <p>
-            <strong className="text-white">Confidence</strong> is a simple heuristic that shrinks as
-            predicted position gets worse — not a calibrated win probability. Backtest quality lives on
-            the <strong className="text-white">Models</strong> page (Spearman, top-3 hit rate, etc.).
+            <strong className="text-white">Pos</strong> is the main output. Est. time / gap are secondary
+            pace estimates. Confidence is a simple heuristic, not a win probability — see{" "}
+            <strong className="text-white">Models</strong> for backtest scores.
           </p>
         </ExplainPanel>
 
@@ -132,7 +132,7 @@ export function ClassificationBoard() {
                   <th className="px-4 py-3 font-medium">Driver</th>
                   <th className="px-4 py-3 font-medium">Team</th>
                   <th className="px-4 py-3 font-medium">Confidence</th>
-                  <th className="px-4 py-3 font-medium text-right">Est. time</th>
+                  <th className="px-4 py-3 font-medium text-right">Pace est. time</th>
                   <th className="px-4 py-3 font-medium text-right">Gap</th>
                 </tr>
               </thead>

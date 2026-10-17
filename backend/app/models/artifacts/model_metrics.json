@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-17T19:33:34.480318+00:00",
+  "generated_at": "2026-10-17T19:45:46.960840+00:00",
   "models": [
     {
       "name": "Lap-time XGBoost",
@@ -33,18 +33,18 @@
     {
       "name": "Classification (pace ranking)",
       "kind": "classification",
-      "version": "ranking-strategy-v1",
+      "version": "ranking-pace-v1",
       "primary": true,
       "metrics": {
-        "races_evaluated": 5,
-        "spearman": 0.364,
-        "kendall_tau": 0.2704,
-        "top3_hit_rate": 0.4667,
-        "mae_position": 4.7692
+        "races_evaluated": 6,
+        "spearman": 0.3919,
+        "kendall_tau": 0.2809,
+        "top3_hit_rate": 0.4444,
+        "mae_position": 4.7024
       },
-      "description": "Backtest of finishing-order prediction vs OpenF1 session_result. Uses pace-offset ranking (lightweight proxy of the live strategy-time ranking)."
+      "description": "Backtest of finishing-order prediction vs OpenF1 session_result. Same pace-ranking approach as the live Classification page (independent of Strategy tyre-window search)."
     }
   ],
-  "evaluation_races": 5,
+  "evaluation_races": 6,
   "notes": []
 }

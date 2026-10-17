@@ -1,18 +1,26 @@
-"""Phase 2 — predicted finishing order (classification first, times secondary)."""
+"""Phase 2 — predicted finishing order (pace ranking, independent of strategy search)."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.domain.models import ClassificationResponse, MeetingSummary, PredictedFinish, StrategyResponse
+from app.domain.models import ClassificationResponse, MeetingSummary, PredictedFinish
+from app.models.lap_time import LapTimeModel
 from app.simulation.strategy import StrategySimulator
 
 
 class ClassificationPredictor:
-    """Rank the grid from strategy race-time simulation.
+    """Predict finishing order from relative race pace — not from optimal tyre strategies.
 
-    Position order is the product; estimated times are supporting detail only.
+    Strategy page answers: which tyre plan is fastest for each driver?
+    This page answers: who is likely to finish ahead of whom, assuming a shared
+    typical dry race shape (baseline lap + driver pace offset + one stop).
+
+    Those are related inputs (both use OpenF1 pace history) but different questions,
+    so estimated times here will NOT match Strategy's per-driver optimal race times.
     """
+
+    VERSION = "ranking-pace-v1"
 
     def __init__(self, simulator: StrategySimulator | None = None) -> None:
         self.simulator = simulator or StrategySimulator()
@@ -23,37 +31,44 @@ class ClassificationPredictor:
             self.simulator.close()
 
     def predict(self, meeting_key: int | None = None) -> ClassificationResponse:
-        strategy: StrategyResponse = self.simulator.simulate_grid(meeting_key)
-        return self.from_strategy(strategy)
+        pipeline = self.simulator.pipeline
+        meeting = pipeline.get_meeting(meeting_key)
+        drivers = pipeline.drivers_for_meeting(meeting.meeting_key)
+        if drivers.empty:
+            raise RuntimeError("No drivers found for meeting")
+        drivers = drivers.drop_duplicates(subset=["driver_number"])
+        if "team_name" in drivers.columns:
+            drivers = drivers[drivers["team_name"].notna()]
 
-    @staticmethod
-    def from_strategy(strategy: StrategyResponse) -> ClassificationResponse:
-        ordered = sorted(strategy.drivers, key=lambda d: d.predicted_race_time_s)
-        leader_time = ordered[0].predicted_race_time_s if ordered else 0.0
-        n = max(len(ordered), 1)
-        standings: list[PredictedFinish] = []
-        for idx, driver in enumerate(ordered, start=1):
-            # Confidence decays gently with predicted position (heuristic, not calibrated probs)
-            confidence = round(max(0.35, 1.0 - (idx - 1) / (n * 1.35)), 3)
-            standings.append(
-                PredictedFinish(
-                    position=idx,
-                    driver_number=driver.driver_number,
-                    name_acronym=driver.name_acronym,
-                    full_name=driver.full_name,
-                    team_name=driver.team_name,
-                    team_colour=driver.team_colour,
-                    estimated_race_time_s=round(driver.predicted_race_time_s, 3),
-                    gap_to_leader_s=round(driver.predicted_race_time_s - leader_time, 3),
-                    strategy_label=driver.strategy_label,
-                    confidence=confidence,
-                )
-            )
+        circuit = meeting.circuit_short_name or "COTA"
+        pit_loss = pipeline.estimate_pit_loss(circuit_short_name=circuit)
+        offsets = self.simulator._pace_offsets(drivers, circuit)
+
+        lap_model = self.simulator.model
+        if lap_model.model is None and lap_model.is_ready:
+            lap_model.load()
+        baseline = (
+            lap_model._baseline_for(circuit)
+            if isinstance(lap_model, LapTimeModel) and lap_model.is_ready
+            else float(LapTimeModel().circuit_baselines.get(circuit, 98.5))
+        )
+
+        standings = self.predict_lightweight(
+            meeting,
+            drivers,
+            pace_offsets=offsets,
+            pit_loss=pit_loss,
+            circuit_baseline=baseline,
+        )
         return ClassificationResponse(
-            meeting=strategy.meeting,
+            meeting=meeting,
             standings=standings,
-            model_version="ranking-strategy-v1",
+            model_version=self.VERSION,
             generated_at=datetime.now(timezone.utc).isoformat(),
+            note=(
+                "Finishing order from relative pace (shared 1-stop race shape) — "
+                "not a re-sort of Strategy optimal tyre times. Estimated times are secondary."
+            ),
         )
 
     def predict_lightweight(
@@ -65,12 +80,11 @@ class ClassificationPredictor:
         pit_loss: float,
         circuit_baseline: float,
     ) -> list[PredictedFinish]:
-        """Fast ranking for historical backtests (no full strategy search)."""
+        """Rank by typical race pace: circuit baseline + driver offset + one pit stop."""
         rows: list[tuple[float, dict]] = []
         for _, row in drivers_df.iterrows():
             driver = row.to_dict()
             dnum = int(driver["driver_number"])
-            # Assume typical 1-stop dry race: baseline pace + driver offset + one pit
             race_time = (circuit_baseline + pace_offsets.get(dnum, 0.0)) * meeting.race_laps + pit_loss
             rows.append((race_time, driver))
         rows.sort(key=lambda x: x[0])
@@ -88,7 +102,7 @@ class ClassificationPredictor:
                     team_colour=str(driver["team_colour"]) if driver.get("team_colour") else None,
                     estimated_race_time_s=round(race_time, 3),
                     gap_to_leader_s=round(race_time - leader, 3),
-                    strategy_label="pace-baseline 1-stop",
+                    strategy_label="pace model · shared 1-stop",
                     confidence=round(max(0.35, 1.0 - (idx - 1) / (n * 1.35)), 3),
                 )
             )

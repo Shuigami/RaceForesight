@@ -22,7 +22,7 @@ export function StrategyGrid({ drivers, selected, onSelect }: Props) {
             <th className="px-4 py-3 font-medium">Strategy</th>
             <th className="px-4 py-3 font-medium">Compounds</th>
             <th className="px-4 py-3 font-medium">Pit laps</th>
-            <th className="px-4 py-3 font-medium text-right">Predicted time</th>
+            <th className="px-4 py-3 font-medium text-right">Strategy race time</th>
           </tr>
         </thead>
         <tbody>

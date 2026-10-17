@@ -73,9 +73,12 @@ class PredictedFinish(BaseModel):
 class ClassificationResponse(BaseModel):
     meeting: MeetingSummary
     standings: list[PredictedFinish]
-    model_version: str = "ranking-strategy-v1"
+    model_version: str = "ranking-pace-v1"
     generated_at: str
-    note: str = "Classification is primary; estimated times are secondary."
+    note: str = (
+        "Finishing order from relative pace (not Strategy tyre optimisation). "
+        "Estimated times are secondary and will differ from Strategy race times."
+    )
 
 
 class ModelScore(BaseModel):
