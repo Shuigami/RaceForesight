@@ -10,9 +10,13 @@ from typing import Any
 
 import httpx
 import pandas as pd
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.config import settings
+
+
+class RateLimitError(Exception):
+    """Raised when OpenF1 returns HTTP 429."""
 
 
 class OpenF1Client:
@@ -53,7 +57,12 @@ class OpenF1Client:
             time.sleep(self._min_interval - elapsed)
         self._last_request = time.monotonic()
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8))
+    @retry(
+        retry=retry_if_exception_type((RateLimitError, httpx.TransportError)),
+        stop=stop_after_attempt(6),
+        wait=wait_exponential(multiplier=2, min=3, max=60),
+        reraise=True,
+    )
     def get(self, endpoint: str, params: dict[str, Any] | None = None, *, use_cache: bool = True) -> list[dict]:
         params = {k: v for k, v in (params or {}).items() if v is not None}
         cache_path = self._cache_path(endpoint, params)
@@ -63,6 +72,10 @@ class OpenF1Client:
         self._throttle()
         url = f"{self.base_url}/{endpoint.lstrip('/')}"
         response = self._client.get(url, params=params)
+        if response.status_code == 429:
+            # Back off harder than the steady-state throttle
+            time.sleep(5)
+            raise RateLimitError(f"OpenF1 rate limited on {endpoint}")
         response.raise_for_status()
         data = response.json()
         if not isinstance(data, list):

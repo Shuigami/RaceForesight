@@ -138,11 +138,19 @@ class RaceDataPipeline:
                 result[n] = pd.read_parquet(parquet_dir / f"{n}.parquet")
             return result
 
-        result["laps"] = self.client.laps(session_key)
-        result["stints"] = self.client.stints(session_key)
-        result["pits"] = self.client.pits(session_key)
-        result["drivers"] = self.client.drivers(session_key=session_key)
-        result["weather"] = self.client.weather(session_key)
+        fetchers = {
+            "laps": lambda: self.client.laps(session_key),
+            "stints": lambda: self.client.stints(session_key),
+            "pits": lambda: self.client.pits(session_key),
+            "drivers": lambda: self.client.drivers(session_key=session_key),
+            "weather": lambda: self.client.weather(session_key),
+        }
+        for name, fetch in fetchers.items():
+            try:
+                result[name] = fetch()
+            except Exception as exc:
+                print(f"Warning: failed to fetch {name} for session {session_key}: {exc}")
+                result[name] = pd.DataFrame()
 
         for n, df in result.items():
             df.to_parquet(parquet_dir / f"{n}.parquet", index=False)

@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="RF_", env_file=".env", extra="ignore")
 
     openf1_base_url: str = "https://api.openf1.org/v1"
-    openf1_max_rps: float = 2.5
+    openf1_max_rps: float = 1.5
     default_season: int = 2026
     default_circuit_short: str = "COTA"
     default_country: str = "United States"

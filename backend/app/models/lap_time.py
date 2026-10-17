@@ -1,4 +1,4 @@
-"""XGBoost lap-time regressor."""
+"""XGBoost lap-time regressor (circuit-baseline + residual)."""
 
 from __future__ import annotations
 
@@ -14,10 +14,17 @@ from xgboost import XGBRegressor
 from app.config import settings
 from app.features.builder import FEATURE_COLUMNS, FeatureBuilder
 
+# Sensible COTA dry-race baseline when historical COTA data is sparse
+DEFAULT_CIRCUIT_BASELINES = {
+    "COTA": 98.5,
+    "Austin": 98.5,
+}
+
 
 class LapTimeModel:
     MODEL_FILE = "lap_time_xgb.joblib"
     META_FILE = "lap_time_meta.json"
+    BASELINES_FILE = "circuit_baselines.json"
 
     def __init__(self, artifact_dir: Path | None = None) -> None:
         self.artifact_dir = artifact_dir or settings.model_dir
@@ -25,19 +32,38 @@ class LapTimeModel:
         self.features = FeatureBuilder(self.artifact_dir)
         self.model: XGBRegressor | None = None
         self.meta: dict = {}
+        self.circuit_baselines: dict[str, float] = dict(DEFAULT_CIRCUIT_BASELINES)
 
     @property
     def is_ready(self) -> bool:
         return (self.artifact_dir / self.MODEL_FILE).exists()
+
+    def _baseline_for(self, circuit: str) -> float:
+        if circuit in self.circuit_baselines:
+            return float(self.circuit_baselines[circuit])
+        # fallback: global median baseline stored as "*"
+        return float(self.circuit_baselines.get("*", 90.0))
 
     def train(self, df: pd.DataFrame, *, test_fraction: float = 0.2) -> dict:
         if df.empty:
             raise ValueError("Training frame is empty")
 
         work = df.dropna(subset=["lap_duration"]).copy()
-        # Filter extreme outliers (crashes / red flags)
-        q01, q99 = work["lap_duration"].quantile(0.01), work["lap_duration"].quantile(0.99)
-        work = work[(work["lap_duration"] >= q01) & (work["lap_duration"] <= q99)]
+        work["session_med"] = work.groupby("session_key")["lap_duration"].transform("median")
+        work = work[
+            (work["lap_duration"] <= work["session_med"] * 1.07)
+            & (work["lap_duration"] >= work["session_med"] * 0.92)
+        ]
+        work = work[work["compound"].isin(["SOFT", "MEDIUM", "HARD"])]
+        work = work.drop(columns=["session_med"])
+
+        baselines = work.groupby("circuit_short_name")["lap_duration"].median().to_dict()
+        baselines["*"] = float(work["lap_duration"].median())
+        baselines.update({k: v for k, v in DEFAULT_CIRCUIT_BASELINES.items() if k not in baselines})
+        self.circuit_baselines = {str(k): float(v) for k, v in baselines.items()}
+
+        work["baseline"] = work["circuit_short_name"].map(self.circuit_baselines).fillna(self.circuit_baselines["*"])
+        work["residual"] = work["lap_duration"] - work["baseline"]
 
         self.features.fit(work)
         work = self.features.transform(work)
@@ -51,27 +77,30 @@ class LapTimeModel:
             test_df = work.tail(max(50, len(work) // 10))
 
         x_train = train_df[FEATURE_COLUMNS].to_numpy(dtype=np.float32)
-        y_train = train_df["lap_duration"].to_numpy(dtype=np.float32)
+        y_train = train_df["residual"].to_numpy(dtype=np.float32)
         x_test = test_df[FEATURE_COLUMNS].to_numpy(dtype=np.float32)
-        y_test = test_df["lap_duration"].to_numpy(dtype=np.float32)
+        y_test_abs = test_df["lap_duration"].to_numpy(dtype=np.float32)
+        baseline_test = test_df["baseline"].to_numpy(dtype=np.float32)
 
         self.model = XGBRegressor(
-            n_estimators=250,
-            max_depth=6,
-            learning_rate=0.08,
-            subsample=0.9,
-            colsample_bytree=0.9,
+            n_estimators=300,
+            max_depth=5,
+            learning_rate=0.06,
+            subsample=0.85,
+            colsample_bytree=0.85,
+            min_child_weight=3,
             objective="reg:squarederror",
             n_jobs=4,
             random_state=42,
         )
         self.model.fit(x_train, y_train)
-        preds = self.model.predict(x_test)
-        mae = float(mean_absolute_error(y_test, preds))
-        rmse = float(np.sqrt(mean_squared_error(y_test, preds)))
+        preds = baseline_test + self.model.predict(x_test)
+        mae = float(mean_absolute_error(y_test_abs, preds))
+        rmse = float(np.sqrt(mean_squared_error(y_test_abs, preds)))
 
         self.meta = {
             "version": "xgboost-lap-v1",
+            "target": "circuit_residual",
             "n_train": int(len(train_df)),
             "n_test": int(len(test_df)),
             "mae": mae,
@@ -87,6 +116,9 @@ class LapTimeModel:
         joblib.dump(self.model, self.artifact_dir / self.MODEL_FILE)
         self.features.save()
         (self.artifact_dir / self.META_FILE).write_text(json.dumps(self.meta, indent=2), encoding="utf-8")
+        (self.artifact_dir / self.BASELINES_FILE).write_text(
+            json.dumps(self.circuit_baselines, indent=2), encoding="utf-8"
+        )
 
     def load(self) -> LapTimeModel:
         model_path = self.artifact_dir / self.MODEL_FILE
@@ -97,14 +129,20 @@ class LapTimeModel:
         meta_path = self.artifact_dir / self.META_FILE
         if meta_path.exists():
             self.meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        baselines_path = self.artifact_dir / self.BASELINES_FILE
+        if baselines_path.exists():
+            self.circuit_baselines = json.loads(baselines_path.read_text(encoding="utf-8"))
         return self
 
     def predict_laps(self, df: pd.DataFrame) -> np.ndarray:
         if self.model is None:
             self.load()
         assert self.model is not None
-        x = self.features.matrix(df)
-        return self.model.predict(x)
+        transformed = self.features.transform(df)
+        residuals = self.model.predict(transformed[FEATURE_COLUMNS].to_numpy(dtype=np.float32))
+        circuits = transformed.get("circuit_short_name", pd.Series(["*"] * len(transformed))).astype(str)
+        baselines = np.array([self._baseline_for(c) for c in circuits], dtype=np.float32)
+        return baselines + residuals
 
     def predict_stint_laps(
         self,
