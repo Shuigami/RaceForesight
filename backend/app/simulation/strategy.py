@@ -245,11 +245,11 @@ class StrategySimulator:
         if drivers.empty:
             raise RuntimeError("No drivers found for meeting")
 
-        # Limit to 20 entries (current grid)
+        # Full entry list for the meeting (2026 grid can be > 20)
         drivers = drivers.drop_duplicates(subset=["driver_number"])
         if "team_name" in drivers.columns:
             drivers = drivers[drivers["team_name"].notna()]
-        drivers = drivers.head(20)
+
         pit_loss = self.pipeline.estimate_pit_loss(circuit_short_name=meeting.circuit_short_name or "COTA")
         offsets = self._pace_offsets(drivers, meeting.circuit_short_name or "COTA")
 

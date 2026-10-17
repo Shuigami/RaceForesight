@@ -54,7 +54,7 @@ Optional: copy `frontend/.env.local.example` to `frontend/.env.local` to point a
 |----------|-------------|
 | `GET /health` | Health check + model readiness |
 | `GET /api/races` | Meetings (flag `is_default` = next GP) |
-| `GET /api/races/{meeting_key}/strategy` | Optimal strategies for up to 20 drivers |
+| `GET /api/races/{meeting_key}/strategy` | Optimal strategies for the full entry list |
 | `GET /api/races/{meeting_key}/strategy/{driver_number}` | Alternatives + degradation curve |
 | `GET /api/races/{meeting_key}/prediction` | Predicted finishing order (Phase 2) |
 | `GET /api/models/metrics` | Accuracy / scores for lap-time + classification models |

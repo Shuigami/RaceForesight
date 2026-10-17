@@ -240,7 +240,7 @@ class ModelEvaluator:
             drivers = drivers.drop_duplicates(subset=["driver_number"])
             if "team_name" in drivers.columns:
                 drivers = drivers[drivers["team_name"].notna()]
-            drivers = drivers.head(20)
+
 
             offsets = {}
             try:
