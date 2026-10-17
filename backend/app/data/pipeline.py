@@ -9,6 +9,7 @@ import pandas as pd
 
 from app.clients.openf1 import OpenF1Client
 from app.config import settings
+from app.domain.circuit_laps import resolve_race_laps
 from app.domain.models import MeetingSummary
 
 
@@ -47,18 +48,12 @@ class RaceDataPipeline:
                     year=int(row["year"]),
                     date_start=str(row["date_start"]) if pd.notna(row.get("date_start")) else None,
                     is_default=int(row["meeting_key"]) == default_key,
-                    race_laps=settings.race_laps_cota,
+                    race_laps=resolve_race_laps(
+                        str(row.get("circuit_short_name") or ""),
+                        str(row.get("meeting_name") or row.get("meeting_official_name") or ""),
+                    ),
                 )
             )
-        for m in out:
-            circuit = m.circuit_short_name.upper()
-            if circuit == "COTA" or (
-                "United States" in m.country_name and "United States" in m.meeting_name
-            ):
-                m.race_laps = settings.race_laps_cota
-            else:
-                # Generic fallback; accurate lap counts can be enriched later
-                m.race_laps = 56
         return out
 
     def resolve_default_meeting_key(self, meetings: pd.DataFrame | None = None) -> int:

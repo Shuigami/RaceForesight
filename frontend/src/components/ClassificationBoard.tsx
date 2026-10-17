@@ -81,8 +81,10 @@ export function ClassificationBoard() {
           </p>
           <p>
             <strong className="text-white">Pos</strong> is the main output. Est. time / gap are secondary
-            pace estimates. Confidence is a simple heuristic, not a win probability — see{" "}
-            <strong className="text-white">Models</strong> for backtest scores.
+            green-flag pace estimates (scheduled race laps × typical competitive lap + one pit). They do{" "}
+            <em>not</em> include Safety Car / VSC / red flags, so wall-clock race times are often longer in
+            reality. We also do not yet model 2026 car regs as a separate factor — see{" "}
+            <strong className="text-white">Models</strong> for ranking backtests.
           </p>
         </ExplainPanel>
 
