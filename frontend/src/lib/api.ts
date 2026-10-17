@@ -48,8 +48,54 @@ export type StrategyDetail = {
   model_version: string;
 };
 
+export type PredictedFinish = {
+  position: number;
+  driver_number: number;
+  name_acronym: string;
+  full_name: string;
+  team_name: string;
+  team_colour: string | null;
+  estimated_race_time_s: number | null;
+  gap_to_leader_s: number | null;
+  strategy_label: string | null;
+  confidence: number | null;
+};
+
+export type ClassificationResponse = {
+  meeting: MeetingSummary;
+  standings: PredictedFinish[];
+  model_version: string;
+  generated_at: string;
+  note: string;
+};
+
+export type ModelScore = {
+  name: string;
+  kind: string;
+  version: string;
+  primary: boolean;
+  metrics: Record<string, number | string | null>;
+  description: string;
+};
+
+export type ModelsMetricsResponse = {
+  generated_at: string;
+  models: ModelScore[];
+  evaluation_races: number;
+  notes: string[];
+};
+
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { cache: "no-store" });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(detail || `Request failed (${res.status})`);
+  }
+  return res.json() as Promise<T>;
+}
+
+async function postJson<T>(path: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, { method: "POST", cache: "no-store" });
   if (!res.ok) {
     const detail = await res.text();
     throw new Error(detail || `Request failed (${res.status})`);
@@ -67,6 +113,18 @@ export function fetchStrategy(meetingKey: number) {
 
 export function fetchDriverStrategy(meetingKey: number, driverNumber: number) {
   return getJson<StrategyDetail>(`/api/races/${meetingKey}/strategy/${driverNumber}`);
+}
+
+export function fetchPrediction(meetingKey: number) {
+  return getJson<ClassificationResponse>(`/api/races/${meetingKey}/prediction`);
+}
+
+export function fetchModelMetrics() {
+  return getJson<ModelsMetricsResponse>("/api/models/metrics");
+}
+
+export function runModelEvaluation() {
+  return postJson<ModelsMetricsResponse>("/api/models/evaluate?years=2024,2025&max_sessions=12&ranking_races=6");
 }
 
 export function formatRaceTime(seconds: number): string {

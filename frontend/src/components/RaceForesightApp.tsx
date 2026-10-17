@@ -86,16 +86,11 @@ export function RaceForesightApp() {
   );
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 bg-grid opacity-40" />
-      <div className="pointer-events-none absolute -left-32 top-0 h-[420px] w-[420px] rounded-full bg-accent/20 blur-[120px]" />
-      <div className="pointer-events-none absolute bottom-0 right-0 h-[380px] w-[380px] rounded-full bg-cyan/10 blur-[100px]" />
-
       <main className="relative mx-auto flex w-full max-w-6xl flex-col gap-10 px-5 pb-16 pt-10 md:px-8">
         <header className="space-y-5">
           <p className="text-[11px] uppercase tracking-[0.28em] text-accent">Predictive race strategy</p>
           <h1 className="font-display text-5xl leading-none tracking-[0.04em] text-white md:text-7xl">
-            RaceForesight
+            Tyre strategy
           </h1>
           <p className="max-w-xl text-base text-fog md:text-lg">
             XGBoost lap-time estimates and pit-window simulation for the full F1 grid — defaulting to the next Grand Prix.
@@ -159,6 +154,5 @@ export function RaceForesightApp() {
           </>
         )}
       </main>
-    </div>
   );
 }

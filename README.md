@@ -56,8 +56,25 @@ Optional: copy `frontend/.env.local.example` to `frontend/.env.local` to point a
 | `GET /api/races` | Meetings (flag `is_default` = next GP) |
 | `GET /api/races/{meeting_key}/strategy` | Optimal strategies for up to 20 drivers |
 | `GET /api/races/{meeting_key}/strategy/{driver_number}` | Alternatives + degradation curve |
+| `GET /api/races/{meeting_key}/prediction` | Predicted finishing order (Phase 2) |
+| `GET /api/models/metrics` | Accuracy / scores for lap-time + classification models |
+| `POST /api/models/evaluate` | Recompute and persist model metrics |
 
 Use `meeting_key=0` to resolve the default (next) race.
+
+## Frontend pages
+
+| Route | Purpose |
+|-------|---------|
+| `/` | Tyre strategy grid |
+| `/classification` | Predicted race classification |
+| `/models` | Model accuracy & benchmark scores |
+
+Evaluate models (writes `backend/app/models/artifacts/model_metrics.json`):
+
+```bash
+python scripts/evaluate_models.py --years 2024,2025 --ranking-races 6
+```
 
 ## How it works
 
@@ -65,10 +82,8 @@ Use `meeting_key=0` to resolve the default (next) race.
 2. Train an XGBoost model on circuit-relative lap-time residuals
 3. Enumerate legal dry 1-stop and 2-stop compound windows
 4. Pick the strategy with the lowest predicted race time per driver
-
-## Phase 2 (planned)
-
-Predicted finishing order for the next GP (classification first, estimated times second).
+5. Rank the grid for classification (positions first; times secondary)
+6. Backtest ranking vs OpenF1 `session_result`; benchmark Random Forest vs XGBoost
 
 ## License
 

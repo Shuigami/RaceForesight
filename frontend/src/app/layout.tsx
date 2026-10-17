@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Barlow, Bebas_Neue, JetBrains_Mono } from "next/font/google";
+import { AppShell } from "@/components/AppShell";
 import "./globals.css";
 
 const display = Bebas_Neue({
@@ -21,7 +22,7 @@ const mono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "RaceForesight",
-  description: "Predictive F1 tyre strategy — lap-time ML and pit-window simulation",
+  description: "Predictive F1 tyre strategy, classification, and model scores",
 };
 
 export default function RootLayout({
@@ -32,7 +33,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${display.variable} ${body.variable} ${mono.variable} antialiased`}>
-        {children}
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );
