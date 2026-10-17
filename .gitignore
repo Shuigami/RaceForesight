@@ -42,6 +42,10 @@ next-env.d.ts
 # Trained model artifacts (regenerate via scripts/train_model.py)
 backend/app/models/artifacts/**
 !backend/app/models/artifacts/.gitkeep
+!backend/app/models/artifacts/model_metrics.json
+!backend/app/models/artifacts/lap_time_meta.json
+!backend/app/models/artifacts/circuit_baselines.json
+!backend/app/models/artifacts/feature_maps.json
 
 # IDE / OS
 .idea/

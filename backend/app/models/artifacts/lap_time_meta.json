@@ -1,0 +1,19 @@
+{
+  "version": "xgboost-lap-v1",
+  "target": "circuit_residual",
+  "n_train": 11502,
+  "n_test": 2876,
+  "mae": 0.7677608728408813,
+  "rmse": 1.127091106780505,
+  "feature_columns": [
+    "tyre_age",
+    "lap_number",
+    "fuel_proxy",
+    "track_temp",
+    "rainfall",
+    "compound_code",
+    "driver_code",
+    "team_code",
+    "circuit_code"
+  ]
+}

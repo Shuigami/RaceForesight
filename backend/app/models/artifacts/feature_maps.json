@@ -1,0 +1,53 @@
+{
+  "driver_map": {
+    "1": 0,
+    "10": 1,
+    "12": 2,
+    "14": 3,
+    "16": 4,
+    "18": 5,
+    "22": 6,
+    "23": 7,
+    "27": 8,
+    "30": 9,
+    "31": 10,
+    "4": 11,
+    "43": 12,
+    "44": 13,
+    "5": 14,
+    "55": 15,
+    "6": 16,
+    "63": 17,
+    "81": 18,
+    "87": 19
+  },
+  "team_map": {
+    "Alpine": 0,
+    "Aston Martin": 1,
+    "Ferrari": 2,
+    "Haas F1 Team": 3,
+    "Kick Sauber": 4,
+    "McLaren": 5,
+    "Mercedes": 6,
+    "Racing Bulls": 7,
+    "Red Bull Racing": 8,
+    "Williams": 9
+  },
+  "circuit_map": {
+    "Austin": 0,
+    "Baku": 1,
+    "Hungaroring": 2,
+    "Interlagos": 3,
+    "Las Vegas": 4,
+    "Lusail": 5,
+    "Mexico City": 6,
+    "Montreal": 7,
+    "Monza": 8,
+    "Silverstone": 9,
+    "Singapore": 10,
+    "Spa-Francorchamps": 11,
+    "Spielberg": 12,
+    "Yas Marina Circuit": 13,
+    "Zandvoort": 14
+  }
+}
