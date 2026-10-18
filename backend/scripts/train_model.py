@@ -16,11 +16,11 @@ from app.models.lap_time import LapTimeModel
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train RaceForesight lap-time model")
-    parser.add_argument("--years", default="2025,2026", help="Comma-separated seasons")
+    parser.add_argument("--years", default="2023,2024,2025,2026", help="Comma-separated seasons")
     parser.add_argument(
         "--max-sessions",
         type=int,
-        default=50,
+        default=80,
         help="Cap completed race sessions ingested (tail of calendar)",
     )
     parser.add_argument("--force", action="store_true", help="Re-download session caches")

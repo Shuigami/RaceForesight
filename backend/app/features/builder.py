@@ -20,6 +20,13 @@ FEATURE_COLUMNS = [
     "driver_code",
     "team_code",
     "circuit_code",
+    "compound_x_tyre_age",
+    "circuit_x_compound",
+    "stint_length",
+    "stint_lap",
+    "is_outlap",
+    "field_delta",
+    "wet_compound",
 ]
 
 COMPOUND_MAP = {
@@ -30,6 +37,9 @@ COMPOUND_MAP = {
     "WET": 4,
     "UNKNOWN": 5,
 }
+
+WET_COMPOUNDS = {"INTERMEDIATE", "WET"}
+DRY_COMPOUNDS = {"SOFT", "MEDIUM", "HARD"}
 
 
 class FeatureBuilder:
@@ -79,10 +89,24 @@ class FeatureBuilder:
         out["circuit_code"] = (
             out.get("circuit_short_name", "UNK").fillna("UNK").astype(str).map(self.circuit_map).fillna(-1).astype(int)
         )
-        for col in ["tyre_age", "lap_number", "fuel_proxy", "track_temp", "rainfall"]:
+        for col in [
+            "tyre_age",
+            "lap_number",
+            "fuel_proxy",
+            "track_temp",
+            "rainfall",
+            "stint_length",
+            "stint_lap",
+            "is_outlap",
+            "field_delta",
+        ]:
             if col not in out.columns:
                 out[col] = 0.0
             out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0.0)
+
+        out["compound_x_tyre_age"] = out["compound_code"] * out["tyre_age"]
+        out["circuit_x_compound"] = out["circuit_code"] * 10 + out["compound_code"]
+        out["wet_compound"] = out["compound"].isin(WET_COMPOUNDS).astype(float)
         return out
 
     def matrix(self, df: pd.DataFrame) -> np.ndarray:

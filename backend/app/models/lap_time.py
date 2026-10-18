@@ -12,7 +12,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 from xgboost import XGBRegressor
 
 from app.config import settings
-from app.features.builder import FEATURE_COLUMNS, FeatureBuilder
+from app.features.builder import DRY_COMPOUNDS, FEATURE_COLUMNS, WET_COMPOUNDS, FeatureBuilder
 
 # Sensible COTA dry-race baseline when historical COTA data is sparse
 DEFAULT_CIRCUIT_BASELINES = {
@@ -25,6 +25,7 @@ class LapTimeModel:
     MODEL_FILE = "lap_time_xgb.joblib"
     META_FILE = "lap_time_meta.json"
     BASELINES_FILE = "circuit_baselines.json"
+    VERSION = "xgboost-lap-v2"
 
     def __init__(self, artifact_dir: Path | None = None) -> None:
         self.artifact_dir = artifact_dir or settings.model_dir
@@ -41,21 +42,38 @@ class LapTimeModel:
     def _baseline_for(self, circuit: str) -> float:
         if circuit in self.circuit_baselines:
             return float(self.circuit_baselines[circuit])
-        # fallback: global median baseline stored as "*"
         return float(self.circuit_baselines.get("*", 90.0))
+
+    @staticmethod
+    def _filter_training_laps(df: pd.DataFrame) -> pd.DataFrame:
+        """Keep competitive laps; include wet compounds; downweight SC-heavy sessions."""
+        work = df.dropna(subset=["lap_duration"]).copy()
+        work["compound"] = work["compound"].astype(str).str.upper()
+        work["session_med"] = work.groupby("session_key")["lap_duration"].transform("median")
+        ratio = work["lap_duration"] / work["session_med"].replace(0, np.nan)
+
+        dry_ok = work["compound"].isin(DRY_COMPOUNDS) & ratio.between(0.93, 1.06)
+        wet_ok = work["compound"].isin(WET_COMPOUNDS) & ratio.between(0.85, 1.25)
+        # Keep dry when raining if compound still dry (mixed conditions)
+        rain = pd.to_numeric(work.get("rainfall", 0), errors="coerce").fillna(0.0)
+        mixed_dry = work["compound"].isin(DRY_COMPOUNDS) & (rain > 0.05) & ratio.between(0.90, 1.12)
+
+        work = work[dry_ok | wet_ok | mixed_dry].copy()
+        if "is_outlap" in work.columns:
+            work = work[work["is_outlap"].fillna(0).astype(int) == 0]
+
+        # Sample weight: reduce influence of neutralized sessions
+        intensity = pd.to_numeric(work.get("neutralization_intensity", 0), errors="coerce").fillna(0.0)
+        work["sample_weight"] = (1.0 - 0.7 * intensity.clip(0, 1)).clip(0.25, 1.0)
+        return work.drop(columns=["session_med"], errors="ignore")
 
     def train(self, df: pd.DataFrame, *, test_fraction: float = 0.2) -> dict:
         if df.empty:
             raise ValueError("Training frame is empty")
 
-        work = df.dropna(subset=["lap_duration"]).copy()
-        work["session_med"] = work.groupby("session_key")["lap_duration"].transform("median")
-        work = work[
-            (work["lap_duration"] <= work["session_med"] * 1.07)
-            & (work["lap_duration"] >= work["session_med"] * 0.92)
-        ]
-        work = work[work["compound"].isin(["SOFT", "MEDIUM", "HARD"])]
-        work = work.drop(columns=["session_med"])
+        work = self._filter_training_laps(df)
+        if work.empty:
+            raise ValueError("No laps left after SC/wet filters")
 
         baselines = work.groupby("circuit_short_name")["lap_duration"].median().to_dict()
         baselines["*"] = float(work["lap_duration"].median())
@@ -78,14 +96,15 @@ class LapTimeModel:
 
         x_train = train_df[FEATURE_COLUMNS].to_numpy(dtype=np.float32)
         y_train = train_df["residual"].to_numpy(dtype=np.float32)
+        w_train = train_df["sample_weight"].to_numpy(dtype=np.float32)
         x_test = test_df[FEATURE_COLUMNS].to_numpy(dtype=np.float32)
         y_test_abs = test_df["lap_duration"].to_numpy(dtype=np.float32)
         baseline_test = test_df["baseline"].to_numpy(dtype=np.float32)
 
         self.model = XGBRegressor(
-            n_estimators=300,
-            max_depth=5,
-            learning_rate=0.06,
+            n_estimators=350,
+            max_depth=6,
+            learning_rate=0.05,
             subsample=0.85,
             colsample_bytree=0.85,
             min_child_weight=3,
@@ -93,19 +112,21 @@ class LapTimeModel:
             n_jobs=4,
             random_state=42,
         )
-        self.model.fit(x_train, y_train)
+        self.model.fit(x_train, y_train, sample_weight=w_train)
         preds = baseline_test + self.model.predict(x_test)
         mae = float(mean_absolute_error(y_test_abs, preds))
         rmse = float(np.sqrt(mean_squared_error(y_test_abs, preds)))
 
         self.meta = {
-            "version": "xgboost-lap-v1",
+            "version": self.VERSION,
             "target": "circuit_residual",
             "n_train": int(len(train_df)),
             "n_test": int(len(test_df)),
             "mae": mae,
             "rmse": rmse,
             "feature_columns": FEATURE_COLUMNS,
+            "wet_compounds": True,
+            "sc_downweight": True,
         }
         self.save()
         return self.meta
@@ -159,8 +180,9 @@ class LapTimeModel:
         rainfall: float = 0.0,
         pace_offset: float = 0.0,
     ) -> list[float]:
+        stint_length = lap_end - lap_start + 1
         rows = []
-        for lap in range(lap_start, lap_end + 1):
+        for i, lap in enumerate(range(lap_start, lap_end + 1)):
             rows.append(
                 {
                     "driver_number": driver_number,
@@ -172,6 +194,10 @@ class LapTimeModel:
                     "fuel_proxy": max(1, total_laps - lap + 1),
                     "track_temp": track_temp,
                     "rainfall": rainfall,
+                    "stint_length": stint_length,
+                    "stint_lap": i + 1,
+                    "is_outlap": 1 if i == 0 and lap_start > 1 else 0,
+                    "field_delta": 0.0,
                 }
             )
         preds = self.predict_laps(pd.DataFrame(rows))

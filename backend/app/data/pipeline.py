@@ -209,7 +209,9 @@ class RaceDataPipeline:
         laps = laps[laps["lap_duration"].notna()].copy()
         laps = laps[laps["lap_duration"] > 0]
         if "is_pit_out_lap" in laps.columns:
-            laps = laps[~laps["is_pit_out_lap"].fillna(False).astype(bool)]
+            laps["is_outlap"] = laps["is_pit_out_lap"].fillna(False).astype(bool).astype(int)
+        else:
+            laps["is_outlap"] = 0
 
         # Attach compound / tyre age from stints
         compound_rows: list[dict] = []
@@ -229,6 +231,7 @@ class RaceDataPipeline:
                 tyre_age0 = int(tyre_age_raw) if pd.notna(tyre_age_raw) else 0
                 stint_raw = stint.get("stint_number")
                 stint_number = int(stint_raw) if pd.notna(stint_raw) else 1
+                stint_len = lap_end - lap_start + 1
                 for lap_no in range(lap_start, lap_end + 1):
                     compound_rows.append(
                         {
@@ -237,6 +240,8 @@ class RaceDataPipeline:
                             "compound": str(stint.get("compound") or "UNKNOWN"),
                             "tyre_age": tyre_age0 + (lap_no - lap_start),
                             "stint_number": stint_number,
+                            "stint_length": stint_len,
+                            "stint_lap": lap_no - lap_start + 1,
                         }
                     )
         compound_df = pd.DataFrame(compound_rows)
@@ -246,6 +251,8 @@ class RaceDataPipeline:
             laps["compound"] = "UNKNOWN"
             laps["tyre_age"] = 0
             laps["stint_number"] = 1
+            laps["stint_length"] = 1
+            laps["stint_lap"] = 1
 
         if not drivers.empty:
             driver_cols = [c for c in ["driver_number", "name_acronym", "full_name", "team_name", "team_colour"] if c in drivers.columns]
@@ -263,10 +270,23 @@ class RaceDataPipeline:
         laps["year"] = year
         laps["compound"] = laps["compound"].fillna("UNKNOWN").astype(str).str.upper()
         laps["tyre_age"] = laps["tyre_age"].fillna(0).astype(int)
+        laps["stint_length"] = laps.get("stint_length", pd.Series(1, index=laps.index)).fillna(1).astype(int)
+        laps["stint_lap"] = laps.get("stint_lap", pd.Series(1, index=laps.index)).fillna(1).astype(int)
+        if "is_outlap" not in laps.columns:
+            laps["is_outlap"] = 0
 
         max_lap = int(laps["lap_number"].max()) if not laps.empty else 1
         laps["fuel_proxy"] = (max_lap - laps["lap_number"].astype(int) + 1).clip(lower=1)
         laps["laps_remaining"] = laps["fuel_proxy"]
+
+        # Relative pace vs field on same lap (traffic / pack density proxy)
+        lap_field = laps.groupby("lap_number")["lap_duration"].transform("median")
+        laps["field_delta"] = laps["lap_duration"] - lap_field
+
+        # Session neutralization intensity: share of unusually slow green-flag candidates
+        session_med = float(laps["lap_duration"].median()) if not laps.empty else 1.0
+        slow_share = float((laps["lap_duration"] > session_med * 1.08).mean()) if session_med > 0 else 0.0
+        laps["neutralization_intensity"] = slow_share
 
         keep = [
             "session_key",
@@ -283,6 +303,11 @@ class RaceDataPipeline:
             "compound",
             "tyre_age",
             "stint_number",
+            "stint_length",
+            "stint_lap",
+            "is_outlap",
+            "field_delta",
+            "neutralization_intensity",
             "track_temp",
             "rainfall",
             "fuel_proxy",
@@ -328,3 +353,90 @@ class RaceDataPipeline:
             return pd.DataFrame()
         latest = sessions.sort_values("date_start").iloc[-1]
         return self.ingest_session(int(latest["session_key"]))["drivers"].drop_duplicates(subset=["driver_number"])
+
+    def qualifying_session_key(self, meeting_key: int) -> int | None:
+        sessions = self.client.sessions(meeting_key=meeting_key)
+        if sessions.empty:
+            return None
+        quali = sessions[sessions["session_name"].astype(str).str.lower().eq("qualifying")]
+        if quali.empty:
+            quali = sessions[sessions["session_type"].astype(str).str.lower().eq("qualifying")]
+        if quali.empty:
+            return None
+        return int(quali.iloc[0]["session_key"])
+
+    def qualifying_grid(self, meeting_key: int) -> dict[int, int]:
+        """Grid positions from qualifying session_result (1 = pole)."""
+        qkey = self.qualifying_session_key(meeting_key)
+        if not qkey:
+            return {}
+        try:
+            result = self.client.session_result(qkey)
+        except Exception:
+            return {}
+        if result.empty or "position" not in result.columns or "driver_number" not in result.columns:
+            return {}
+        out: dict[int, int] = {}
+        for _, row in result.dropna(subset=["position", "driver_number"]).iterrows():
+            try:
+                pos = int(float(row["position"]))
+            except (TypeError, ValueError):
+                continue
+            out[int(row["driver_number"])] = pos
+        return out
+
+    def race_results_history(
+        self,
+        years: list[int] | None = None,
+        *,
+        exclude_session_key: int | None = None,
+        max_sessions: int | None = 80,
+    ) -> pd.DataFrame:
+        """Completed race finishing positions for form features."""
+        sessions = self.list_race_sessions(years)
+        if sessions.empty:
+            return pd.DataFrame()
+        sessions = sessions.sort_values("date_start")
+        now = datetime.now(timezone.utc)
+        if "date_start" in sessions.columns:
+            starts = pd.to_datetime(sessions["date_start"], utc=True, errors="coerce")
+            sessions = sessions.loc[starts <= now + pd.Timedelta(hours=3)].copy()
+        if exclude_session_key is not None:
+            sessions = sessions[sessions["session_key"].astype(int) != int(exclude_session_key)]
+        if max_sessions:
+            sessions = sessions.tail(max_sessions)
+
+        rows: list[dict] = []
+        for _, sess in sessions.iterrows():
+            session_key = int(sess["session_key"])
+            try:
+                result = self.client.session_result(session_key)
+            except Exception:
+                continue
+            if result.empty or "position" not in result.columns:
+                continue
+            weather = self.ingest_session(session_key).get("weather", pd.DataFrame())
+            rainfall = (
+                float(weather["rainfall"].mean())
+                if not weather.empty and "rainfall" in weather.columns
+                else 0.0
+            )
+            for _, row in result.dropna(subset=["position", "driver_number"]).iterrows():
+                try:
+                    pos = int(float(row["position"]))
+                    dnum = int(row["driver_number"])
+                except (TypeError, ValueError):
+                    continue
+                rows.append(
+                    {
+                        "session_key": session_key,
+                        "meeting_key": int(sess["meeting_key"]),
+                        "year": int(sess.get("year") or 0),
+                        "date_start": sess.get("date_start"),
+                        "circuit_short_name": str(sess.get("circuit_short_name") or ""),
+                        "driver_number": dnum,
+                        "position": pos,
+                        "rainfall": rainfall,
+                    }
+                )
+        return pd.DataFrame(rows)

@@ -87,32 +87,32 @@ class StrategySimulator:
                     "Lap-time model not trained. Run: python scripts/train_model.py"
                 )
 
-    def _pace_offsets(self, drivers: pd.DataFrame, circuit: str) -> dict[int, float]:
-        """Calibrate driver pace from recent race lap averages vs field."""
-        offsets: dict[int, float] = {}
+    def _pace_offsets(
+        self,
+        drivers: pd.DataFrame,
+        circuit: str,
+        *,
+        exclude_session_key: int | None = None,
+        years: list[int] | None = None,
+        max_sessions: int = 40,
+    ) -> dict[int, float]:
+        """Calibrate driver pace from recent laps (circuit-preferred, shrunk for newcomers)."""
+        from app.simulation.form import shrunk_pace_offsets
+
+        years = years or [settings.default_season, settings.default_season - 1, settings.default_season - 2]
         try:
             train = self.pipeline.build_training_frame(
-                years=[settings.default_season, settings.default_season - 1],
-                max_sessions=16,
+                years=years,
+                max_sessions=max_sessions,
                 completed_only=True,
             )
         except Exception:
             train = pd.DataFrame()
 
-        if train.empty or "lap_duration" not in train.columns:
-            return {int(d): 0.0 for d in drivers["driver_number"].tolist()}
+        if not train.empty and exclude_session_key is not None and "session_key" in train.columns:
+            train = train[train["session_key"].astype(int) != int(exclude_session_key)]
 
-        recent = train.copy()
-        # Prefer same circuit when available
-        same = recent[recent["circuit_short_name"].astype(str).str.upper() == circuit.upper()]
-        use = same if len(same) > 200 else recent
-        field = float(use["lap_duration"].median())
-        for driver_number, grp in use.groupby("driver_number"):
-            driver_med = float(grp["lap_duration"].median())
-            offsets[int(driver_number)] = driver_med - field
-        for d in drivers["driver_number"].tolist():
-            offsets.setdefault(int(d), 0.0)
-        return offsets
+        return shrunk_pace_offsets(train, drivers, circuit)
 
     def _candidate_strategies(self, total_laps: int) -> list[dict]:
         """1-stop and 2-stop dry strategies with two distinct compounds."""
