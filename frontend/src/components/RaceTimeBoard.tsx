@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  fetchPrediction,
+  fetchRaceTime,
   formatRaceTime,
   type ClassificationResponse,
   type PredictedFinish,
@@ -31,12 +31,12 @@ export function RaceTimeBoard({ meetingKey, active }: Props) {
     setError(null);
     setSelected(null);
     try {
-      setPrediction(await fetchPrediction(key));
+      setPrediction(await fetchRaceTime(key));
       setLoadedKey(key);
     } catch (err) {
       setPrediction(null);
       setLoadedKey(null);
-      setError(err instanceof Error ? err.message : "Prediction failed");
+      setError(err instanceof Error ? err.message : "Race-time prediction failed");
     } finally {
       setLoading(false);
     }
@@ -82,10 +82,7 @@ export function RaceTimeBoard({ meetingKey, active }: Props) {
             <h2 className="font-display text-2xl tracking-wide text-white">Predicted race times</h2>
             <p className="text-xs text-muted">{prediction.model_version}</p>
           </div>
-          <p className="text-xs text-fog">
-            Pace-estimated race times from Classification for now — green-flag pace × race distance, not
-            Strategy wall-clock. A dedicated race-time model can replace this later.
-          </p>
+          <p className="text-xs text-fog">{prediction.note}</p>
           <div className="overflow-x-auto rounded-sm border border-white/10 bg-panel/80 backdrop-blur">
             <table className="w-full min-w-[640px] border-collapse text-left text-sm">
               <thead>
@@ -93,9 +90,9 @@ export function RaceTimeBoard({ meetingKey, active }: Props) {
                   <th className="px-4 py-3 font-medium">Pos</th>
                   <th className="px-4 py-3 font-medium">Driver</th>
                   <th className="px-4 py-3 font-medium">Team</th>
-                  <th className="px-4 py-3 font-medium">Pace est. time</th>
+                  <th className="px-4 py-3 font-medium">Race time</th>
                   <th className="px-4 py-3 font-medium">Gap</th>
-                  <th className="px-4 py-3 font-medium">Source</th>
+                  <th className="px-4 py-3 font-medium">Model</th>
                 </tr>
               </thead>
               <tbody>

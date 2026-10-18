@@ -11,16 +11,16 @@ export const METRIC_GLOSSARY: Record<string, MetricInfo> = {
     label: "MAE (s)",
     short: "Mean Absolute Error in seconds",
     detail:
-      "Average absolute difference between predicted and actual lap times. If MAE = 0.8s, predictions are off by 0.8 seconds on average.",
-    goodWhen: "Lower is better. Under ~1s is solid for race-pace modelling.",
+      "Average absolute difference between predicted and actual values (lap times or full race durations, depending on the model).",
+    goodWhen: "Lower is better. Lap models: under ~1s. Race-time model: tens of seconds is typical.",
   },
   rmse_s: {
     label: "RMSE (s)",
     short: "Root Mean Squared Error in seconds",
     detail:
-      "Like MAE, but large mistakes are penalised more (errors are squared before averaging). Sensitive to outlier laps.",
+      "Like MAE, but large mistakes are penalised more (errors are squared before averaging). Sensitive to outliers.",
     goodWhen: "Lower is better. Usually a bit higher than MAE.",
-  },
+  }
   r2: {
     label: "R²",
     short: "Coefficient of determination",

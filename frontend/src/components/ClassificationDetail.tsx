@@ -28,12 +28,12 @@ export function ClassificationDetail({ row }: { row: PredictedFinish }) {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="border border-white/10 bg-ink-850/60 px-4 py-3">
-          <p className="text-[11px] uppercase tracking-[0.16em] text-muted">Pace est. time</p>
+          <p className="text-[11px] uppercase tracking-[0.16em] text-muted">Est. race time</p>
           <p className="mt-1 font-mono text-2xl text-white">
             {row.estimated_race_time_s != null ? formatRaceTime(row.estimated_race_time_s) : "—"}
           </p>
           <p className="mt-2 text-xs text-muted">
-            Green-flag pace estimate only — not wall-clock and not Strategy race time.
+            Estimated race duration from the active model — not Strategy tyre wall-clock.
           </p>
         </div>
         <div className="border border-white/10 bg-ink-850/60 px-4 py-3">

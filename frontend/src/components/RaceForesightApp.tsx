@@ -146,9 +146,9 @@ export function RaceForesightApp() {
             race pace with a shared race shape. Its finishing order will not match a pure pace-time sort.
           </p>
           <p>
-            <strong className="text-white">Race time</strong> lists Classification’s pace-estimated race
-            times (green-flag pace × distance). For now it reuses that estimate; a dedicated race-time
-            model can replace it later.
+            <strong className="text-white">Race time</strong> predicts total race duration per driver
+            with a dedicated regressor (grid + form + pace + distance). Not finishing order and not
+            Strategy tyre wall-clock.
           </p>
           <p>
             <strong className="text-white">Strategy</strong> finds the fastest dry tyre / pit plan for

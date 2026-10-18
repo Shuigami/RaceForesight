@@ -157,6 +157,10 @@ export function fetchPrediction(meetingKey: number) {
   return getJson<ClassificationResponse>(`/api/races/${meetingKey}/prediction`);
 }
 
+export function fetchRaceTime(meetingKey: number) {
+  return getJson<ClassificationResponse>(`/api/races/${meetingKey}/race-time`);
+}
+
 export function fetchModelMetrics() {
   return getJson<ModelsMetricsResponse>("/api/models/metrics");
 }
