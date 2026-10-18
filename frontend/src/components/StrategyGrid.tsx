@@ -1,7 +1,6 @@
 "use client";
 
 import type { ActualDriverStrategy, DriverStrategy } from "@/lib/api";
-import { formatRaceTime } from "@/lib/api";
 import { CompoundPills } from "./CompoundPills";
 
 type Props = {
@@ -26,14 +25,7 @@ export function StrategyGrid({ drivers, actual = [], selected, onSelect }: Props
             <th className="px-4 py-3 font-medium">Predicted</th>
             <th className="px-4 py-3 font-medium">Compounds</th>
             <th className="px-4 py-3 font-medium">Pit laps</th>
-            {showActual && (
-              <>
-                <th className="px-4 py-3 font-medium">Ran</th>
-                <th className="px-4 py-3 font-medium">Actual compounds</th>
-                <th className="px-4 py-3 font-medium">Actual pits</th>
-              </>
-            )}
-            <th className="px-4 py-3 font-medium text-right">Strategy race time</th>
+            {showActual && <th className="px-4 py-3 font-medium">Actual</th>}
           </tr>
         </thead>
         <tbody>
@@ -70,25 +62,20 @@ export function StrategyGrid({ drivers, actual = [], selected, onSelect }: Props
                 </td>
                 <td className="px-4 py-3 font-mono text-fog">{d.pit_laps.join(", ")}</td>
                 {showActual && (
-                  <>
-                    <td className="px-4 py-3">
-                      {ran ? (
+                  <td className="px-4 py-3">
+                    {ran ? (
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-xs text-fog">{ran.stops}-stop</span>
-                      ) : (
-                        <span className="text-xs text-muted">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {ran ? <CompoundPills compounds={ran.compounds} /> : <span className="text-xs text-muted">—</span>}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-fog">
-                      {ran ? ran.pit_laps.join(", ") || "—" : "—"}
-                    </td>
-                  </>
+                        <CompoundPills compounds={ran.compounds} />
+                        <span className="font-mono text-xs text-muted">
+                          @{ran.pit_laps.join(", ") || "—"}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted">—</span>
+                    )}
+                  </td>
                 )}
-                <td className="px-4 py-3 text-right font-mono tabular-nums text-white">
-                  {formatRaceTime(d.predicted_race_time_s)}
-                </td>
               </tr>
             );
           })}

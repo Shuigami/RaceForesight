@@ -18,7 +18,7 @@ import { StrategyGrid } from "./StrategyGrid";
 type RaceView = "strategy" | "classification";
 
 function parseView(raw: string | null): RaceView {
-  return raw === "classification" ? "classification" : "strategy";
+  return raw === "strategy" ? "strategy" : "classification";
 }
 
 export function RaceForesightApp() {
@@ -40,7 +40,7 @@ export function RaceForesightApp() {
 
   const setView = (next: RaceView) => {
     const params = new URLSearchParams(searchParams.toString());
-    if (next === "strategy") params.delete("view");
+    if (next === "classification") params.delete("view");
     else params.set("view", next);
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
@@ -178,20 +178,20 @@ export function RaceForesightApp() {
           <button
             type="button"
             role="tab"
-            aria-selected={view === "strategy"}
-            className={tabClass(view === "strategy")}
-            onClick={() => setView("strategy")}
-          >
-            Strategy
-          </button>
-          <button
-            type="button"
-            role="tab"
             aria-selected={view === "classification"}
             className={tabClass(view === "classification")}
             onClick={() => setView("classification")}
           >
             Classification
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "strategy"}
+            className={tabClass(view === "strategy")}
+            onClick={() => setView("strategy")}
+          >
+            Strategy
           </button>
         </div>
       </header>
@@ -223,11 +223,6 @@ export function RaceForesightApp() {
                   selected={selectedDriver}
                   onSelect={onSelectDriver}
                 />
-                {strategy.actual && strategy.actual.length > 0 && (
-                  <p className="text-xs text-muted">
-                    Ran columns are OpenF1 race stints for this GP — compare to the model’s predicted plan.
-                  </p>
-                )}
               </section>
 
               {loadingDetail && <div className="text-sm text-muted">Loading driver detail…</div>}
