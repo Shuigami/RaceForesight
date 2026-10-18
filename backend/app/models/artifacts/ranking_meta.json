@@ -1,0 +1,16 @@
+{
+  "version": "ranking-pairwise-v1",
+  "n_races": 52,
+  "n_rows": 923,
+  "feature_columns": [
+    "grid_position",
+    "recent_form",
+    "circuit_form",
+    "pace_offset",
+    "team_form",
+    "rainfall",
+    "n_pace_samples",
+    "is_newcomer",
+    "grid_missing"
+  ]
+}

@@ -26,8 +26,8 @@ def get_metrics() -> ModelsMetricsResponse:
 
 @router.post("/evaluate", response_model=ModelsMetricsResponse)
 def run_evaluation(
-    years: str = Query(default="2025,2026"),
-    max_sessions: int = Query(default=40, ge=3, le=60),
+    years: str = Query(default="2023,2024,2025,2026"),
+    max_sessions: int = Query(default=60, ge=3, le=100),
     ranking_races: int = Query(default=8, ge=1, le=15),
 ) -> ModelsMetricsResponse:
     year_list = [int(y.strip()) for y in years.split(",") if y.strip()]

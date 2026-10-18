@@ -44,6 +44,7 @@ backend/app/models/artifacts/**
 !backend/app/models/artifacts/.gitkeep
 !backend/app/models/artifacts/model_metrics.json
 !backend/app/models/artifacts/lap_time_meta.json
+!backend/app/models/artifacts/ranking_meta.json
 !backend/app/models/artifacts/circuit_baselines.json
 !backend/app/models/artifacts/feature_maps.json
 

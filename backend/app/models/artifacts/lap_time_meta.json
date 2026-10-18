@@ -1,10 +1,10 @@
 {
-  "version": "xgboost-lap-v1",
+  "version": "xgboost-lap-v2",
   "target": "circuit_residual",
-  "n_train": 31020,
-  "n_test": 7755,
-  "mae": 1.6173877716064453,
-  "rmse": 2.142846284566344,
+  "n_train": 60718,
+  "n_test": 15180,
+  "mae": 1.6696287393569946,
+  "rmse": 2.094744318106567,
   "feature_columns": [
     "tyre_age",
     "lap_number",
@@ -14,6 +14,15 @@
     "compound_code",
     "driver_code",
     "team_code",
-    "circuit_code"
-  ]
+    "circuit_code",
+    "compound_x_tyre_age",
+    "circuit_x_compound",
+    "stint_length",
+    "stint_lap",
+    "is_outlap",
+    "field_delta",
+    "wet_compound"
+  ],
+  "wet_compounds": true,
+  "sc_downweight": true
 }

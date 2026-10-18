@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -17,7 +18,7 @@ from app.data.pipeline import RaceDataPipeline
 from app.domain.models import ModelScore, ModelsMetricsResponse
 from app.features.builder import FEATURE_COLUMNS, FeatureBuilder
 from app.models.lap_time import LapTimeModel
-from app.simulation.prediction import ClassificationPredictor
+from app.models.ranking import RankingModel
 
 
 class ModelEvaluator:
@@ -50,10 +51,10 @@ class ModelEvaluator:
         self,
         *,
         years: list[int] | None = None,
-        max_sessions: int = 12,
-        ranking_races: int = 6,
+        max_sessions: int = 60,
+        ranking_races: int = 8,
     ) -> ModelsMetricsResponse:
-        years = years or [2025, 2026]
+        years = years or [2023, 2024, 2025, 2026]
         frame = self.pipeline.build_training_frame(
             years=years,
             max_sessions=max_sessions,
@@ -64,7 +65,7 @@ class ModelEvaluator:
 
         xgb_score = self._score_xgboost(frame)
         rf_score = self._score_random_forest(frame)
-        ranking_score, n_races, notes = self._score_ranking(years=years, max_races=ranking_races)
+        ranking_score, n_races, notes = self._score_ranking_loo(years=years, max_races=ranking_races)
 
         response = ModelsMetricsResponse(
             generated_at=datetime.now(timezone.utc).isoformat(),
@@ -76,14 +77,8 @@ class ModelEvaluator:
         return response
 
     def _prepare_supervised(self, df: pd.DataFrame) -> tuple[pd.DataFrame, FeatureBuilder, dict[str, float]]:
-        work = df.dropna(subset=["lap_duration"]).copy()
-        work["session_med"] = work.groupby("session_key")["lap_duration"].transform("median")
-        work = work[
-            (work["lap_duration"] <= work["session_med"] * 1.07)
-            & (work["lap_duration"] >= work["session_med"] * 0.92)
-            & (work["compound"].isin(["SOFT", "MEDIUM", "HARD"]))
-        ].drop(columns=["session_med"])
-
+        model = LapTimeModel(self.artifact_dir)
+        work = model._filter_training_laps(df)
         baselines = work.groupby("circuit_short_name")["lap_duration"].median().to_dict()
         baselines["*"] = float(work["lap_duration"].median())
         work["baseline"] = work["circuit_short_name"].map(baselines).fillna(baselines["*"])
@@ -104,7 +99,6 @@ class ModelEvaluator:
         return train_df, test_df
 
     def _score_xgboost(self, frame: pd.DataFrame) -> ModelScore:
-        # Prefer already-trained primary model metrics; recompute if missing
         lap = LapTimeModel(self.artifact_dir)
         if lap.is_ready:
             lap.load()
@@ -112,7 +106,7 @@ class ModelEvaluator:
             return ModelScore(
                 name="Lap-time XGBoost",
                 kind="lap_time",
-                version=str(meta.get("version", "xgboost-lap-v1")),
+                version=str(meta.get("version", LapTimeModel.VERSION)),
                 primary=True,
                 metrics={
                     "mae_s": round(float(meta.get("mae", 0)), 4),
@@ -121,18 +115,18 @@ class ModelEvaluator:
                     "n_test": int(meta.get("n_test", 0)),
                     "target": str(meta.get("target", "circuit_residual")),
                 },
-                description="Primary lap-time model used by strategy simulation (circuit baseline + residual).",
+                description=(
+                    "Primary lap-time model (circuit baseline + residual). "
+                    "Includes compound×age / circuit×compound, stint features, wet compounds, SC downweight."
+                ),
             )
 
-        work, _, _ = self._prepare_supervised(frame)
-        train_df, test_df = self._temporal_split(work)
-        # Fallback: train quickly if no artifact
         model = LapTimeModel(self.artifact_dir)
         meta = model.train(frame)
         return ModelScore(
             name="Lap-time XGBoost",
             kind="lap_time",
-            version=str(meta.get("version", "xgboost-lap-v1")),
+            version=str(meta.get("version", LapTimeModel.VERSION)),
             primary=True,
             metrics={
                 "mae_s": round(float(meta["mae"]), 4),
@@ -152,6 +146,7 @@ class ModelEvaluator:
         x_test = test_df[FEATURE_COLUMNS].to_numpy(dtype=np.float32)
         y_abs = test_df["lap_duration"].to_numpy(dtype=np.float32)
         baseline = test_df["baseline"].to_numpy(dtype=np.float32)
+        w = train_df["sample_weight"].to_numpy(dtype=np.float32) if "sample_weight" in train_df.columns else None
 
         rf = RandomForestRegressor(
             n_estimators=200,
@@ -160,11 +155,10 @@ class ModelEvaluator:
             n_jobs=4,
             random_state=42,
         )
-        rf.fit(x_train, y_train)
+        rf.fit(x_train, y_train, sample_weight=w)
         preds = baseline + rf.predict(x_test)
         mae = float(mean_absolute_error(y_abs, preds))
         rmse = float(np.sqrt(mean_squared_error(y_abs, preds)))
-        # R² on absolute lap times
         ss_res = float(np.sum((y_abs - preds) ** 2))
         ss_tot = float(np.sum((y_abs - np.mean(y_abs)) ** 2)) or 1.0
         r2 = 1.0 - ss_res / ss_tot
@@ -172,7 +166,7 @@ class ModelEvaluator:
         return ModelScore(
             name="Lap-time Random Forest",
             kind="lap_time",
-            version="rf-lap-v1",
+            version="rf-lap-v2",
             primary=False,
             metrics={
                 "mae_s": round(mae, 4),
@@ -185,134 +179,143 @@ class ModelEvaluator:
             description="Benchmark regressor on the same features/split as XGBoost (not used in live inference).",
         )
 
-    def _score_ranking(self, *, years: list[int], max_races: int) -> tuple[ModelScore, int, list[str]]:
+    def _build_labeled_races_inline(self, *, years: list[int], max_sessions: int) -> list[pd.DataFrame]:
         sessions = self.pipeline.list_race_sessions(years)
-        notes: list[str] = []
         if sessions.empty:
-            return (
-                ModelScore(
-                    name="Classification (pace ranking)",
-                    kind="classification",
-                    version="ranking-pace-v1",
-                    primary=True,
-                    metrics={},
-                    description="No historical race sessions available for backtest.",
-                ),
-                0,
-                ["No race sessions found for ranking evaluation."],
-            )
-
-        # Prefer completed races with results (skip future / empty)
-        sessions = sessions.sort_values("date_start")
-        evaluated = 0
-        spearman_vals: list[float] = []
-        kendall_vals: list[float] = []
-        top3_hits: list[float] = []
-        mae_pos: list[float] = []
-
-        lap_model = LapTimeModel()
-        if lap_model.is_ready:
-            lap_model.load()
-        predictor = ClassificationPredictor(simulator=None)
-
-        # Evaluate newest completed races first
-        for _, sess in sessions.iloc[::-1].iterrows():
-            if evaluated >= max_races:
-                break
+            return []
+        sessions = sessions.sort_values("date_start").tail(max_sessions)
+        history_all = self.pipeline.race_results_history(years=years, max_sessions=max_sessions + 5)
+        pace = self.pipeline.build_training_frame(years=years, max_sessions=max_sessions, completed_only=True)
+        labeled: list[pd.DataFrame] = []
+        for _, sess in sessions.iterrows():
             session_key = int(sess["session_key"])
             meeting_key = int(sess["meeting_key"])
+            circuit = str(sess.get("circuit_short_name") or "")
             try:
                 actual = self.pipeline.client.session_result(session_key)
-            except Exception as exc:
-                notes.append(f"session_result failed for {session_key}: {exc}")
+            except Exception:
                 continue
             if actual.empty or "position" not in actual.columns:
                 continue
-            actual = actual.dropna(subset=["position"]).copy()
+            actual = actual.dropna(subset=["position", "driver_number"]).copy()
             actual["position"] = actual["position"].astype(int)
             if len(actual) < 10:
                 continue
-
-            try:
-                meeting = self.pipeline.get_meeting(meeting_key)
-            except Exception:
-                continue
-            meeting.circuit_short_name = str(sess.get("circuit_short_name") or meeting.circuit_short_name)
             drivers = self.pipeline.ingest_session(session_key)["drivers"]
             if drivers.empty:
                 continue
             drivers = drivers.drop_duplicates(subset=["driver_number"])
             if "team_name" in drivers.columns:
                 drivers = drivers[drivers["team_name"].notna()]
-
-
-            offsets = {}
-            try:
-                # Reuse simulator pace helper without full strategy search
-                from app.simulation.strategy import StrategySimulator
-
-                sim = StrategySimulator(pipeline=self.pipeline, model=lap_model if lap_model.is_ready else None)
-                offsets = sim._pace_offsets(drivers, meeting.circuit_short_name or "UNK")
-            except Exception:
-                offsets = {int(d): 0.0 for d in drivers["driver_number"].tolist()}
-
-            baseline = 90.0
-            if lap_model.is_ready:
-                baseline = lap_model._baseline_for(meeting.circuit_short_name or "*")
-            pit_loss = self.pipeline.estimate_pit_loss(circuit_short_name=meeting.circuit_short_name or "COTA")
-
-            predicted = predictor.predict_lightweight(
-                meeting,
-                drivers,
-                pace_offsets=offsets,
-                pit_loss=pit_loss,
-                circuit_baseline=baseline,
+            hist = history_all[history_all["session_key"].astype(int) != session_key] if not history_all.empty else history_all
+            pace_ex = pace[pace["session_key"].astype(int) != session_key] if not pace.empty else pace
+            grid = self.pipeline.qualifying_grid(meeting_key)
+            weather = self.pipeline.ingest_session(session_key).get("weather", pd.DataFrame())
+            rainfall = float(weather["rainfall"].mean()) if not weather.empty and "rainfall" in weather.columns else 0.0
+            feats = RankingModel().build_race_features(
+                drivers=drivers,
+                grid=grid,
+                history=hist,
+                pace_frame=pace_ex,
+                circuit=circuit,
+                rainfall=rainfall,
             )
-            pred_map = {p.driver_number: p.position for p in predicted}
-            pairs = []
-            for _, row in actual.iterrows():
-                dnum = int(row["driver_number"])
-                if dnum in pred_map:
-                    pairs.append((pred_map[dnum], int(row["position"])))
-            if len(pairs) < 8:
+            pos_map = {int(r["driver_number"]): int(r["position"]) for _, r in actual.iterrows()}
+            feats["position"] = feats["driver_number"].map(pos_map)
+            feats["session_key"] = session_key
+            feats["circuit_short_name"] = circuit
+            feats = feats.dropna(subset=["position"])
+            if len(feats) >= 8:
+                labeled.append(feats)
+        return labeled
+
+    def _score_ranking_loo(self, *, years: list[int], max_races: int) -> tuple[ModelScore, int, list[str]]:
+        notes: list[str] = []
+        labeled = self._build_labeled_races_inline(years=years, max_sessions=max(40, max_races + 20))
+        if len(labeled) < 3:
+            return (
+                ModelScore(
+                    name="Classification (pairwise ranker)",
+                    kind="classification",
+                    version=RankingModel.VERSION,
+                    primary=True,
+                    metrics={},
+                    description="Insufficient historical races for leave-one-out ranking eval.",
+                ),
+                0,
+                ["Need >=3 races with quali+results for LOO ranking evaluation."],
+            )
+
+        holdouts = labeled[-max_races:]
+        spearman_vals: list[float] = []
+        kendall_vals: list[float] = []
+        top3_hits: list[float] = []
+        mae_pos: list[float] = []
+        evaluated = 0
+
+        for holdout in holdouts:
+            sk = int(holdout["session_key"].iloc[0])
+            train_set = [f for f in labeled if int(f["session_key"].iloc[0]) != sk]
+            if len(train_set) < 3:
+                notes.append(f"skip LOO session {sk}: not enough train races")
                 continue
-
-            pred_pos = np.array([p[0] for p in pairs], dtype=float)
-            true_pos = np.array([p[1] for p in pairs], dtype=float)
-            sp = spearmanr(pred_pos, true_pos).correlation
-            kt = kendalltau(pred_pos, true_pos).correlation
-            if sp is not None and not np.isnan(sp):
-                spearman_vals.append(float(sp))
-            if kt is not None and not np.isnan(kt):
-                kendall_vals.append(float(kt))
-
-            pred_top3 = {p.driver_number for p in predicted if p.position <= 3}
-            true_top3 = set(actual.loc[actual["position"] <= 3, "driver_number"].astype(int).tolist())
-            if true_top3:
-                top3_hits.append(len(pred_top3 & true_top3) / 3.0)
-            mae_pos.append(float(np.mean(np.abs(pred_pos - true_pos))))
-            evaluated += 1
+            with tempfile.TemporaryDirectory(prefix="rf-rank-loo-") as tmp:
+                model = RankingModel(Path(tmp))
+                try:
+                    model.train(train_set)
+                except Exception as exc:
+                    notes.append(f"ranker train failed for holdout {sk}: {exc}")
+                    continue
+                ordered = model.predict_order(holdout)
+                pairs = []
+                for _, row in ordered.iterrows():
+                    true_pos = holdout.loc[holdout["driver_number"] == row["driver_number"], "position"]
+                    if true_pos.empty:
+                        continue
+                    pairs.append((int(row["position"]), int(true_pos.iloc[0]), int(row["driver_number"])))
+                if len(pairs) < 8:
+                    continue
+                pred_pos = np.array([p[0] for p in pairs], dtype=float)
+                true_pos = np.array([p[1] for p in pairs], dtype=float)
+                sp = spearmanr(pred_pos, true_pos).correlation
+                kt = kendalltau(pred_pos, true_pos).correlation
+                if sp is not None and not np.isnan(sp):
+                    spearman_vals.append(float(sp))
+                if kt is not None and not np.isnan(kt):
+                    kendall_vals.append(float(kt))
+                pred_top3 = {p[2] for p in pairs if p[0] <= 3}
+                true_top3 = {p[2] for p in pairs if p[1] <= 3}
+                if true_top3:
+                    top3_hits.append(len(pred_top3 & true_top3) / 3.0)
+                mae_pos.append(float(np.mean(np.abs(pred_pos - true_pos))))
+                evaluated += 1
+                circuit = str(holdout["circuit_short_name"].iloc[0])
+                notes.append(
+                    f"LOO {circuit} session={sk}: spearman={sp:.3f} mae_pos={mae_pos[-1]:.2f}"
+                    if sp is not None and not np.isnan(sp)
+                    else f"LOO {circuit} session={sk}"
+                )
 
         metrics: dict[str, float | int | str | None] = {
             "races_evaluated": evaluated,
+            "eval_protocol": "leave_one_race_out",
             "spearman": round(float(np.mean(spearman_vals)), 4) if spearman_vals else None,
             "kendall_tau": round(float(np.mean(kendall_vals)), 4) if kendall_vals else None,
             "top3_hit_rate": round(float(np.mean(top3_hits)), 4) if top3_hits else None,
             "mae_position": round(float(np.mean(mae_pos)), 4) if mae_pos else None,
         }
         if evaluated == 0:
-            notes.append("Could not evaluate ranking on any race (missing session_result).")
+            notes.append("Could not evaluate ranking on any holdout race.")
 
         score = ModelScore(
-            name="Classification (pace ranking)",
+            name="Classification (pairwise ranker)",
             kind="classification",
-            version="ranking-pace-v1",
+            version=RankingModel.VERSION,
             primary=True,
             metrics=metrics,
             description=(
-                "Backtest of finishing-order prediction vs OpenF1 session_result. "
-                "Same pace-ranking approach as the live Classification page "
-                "(independent of Strategy tyre-window search)."
+                "Leave-one-race-out backtest of pairwise XGBRanker vs OpenF1 session_result. "
+                "Features: qualifying grid, recent/circuit form, shrunk pace, team form, rain."
             ),
         )
         return score, evaluated, notes

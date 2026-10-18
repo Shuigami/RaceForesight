@@ -53,6 +53,26 @@ export const METRIC_GLOSSARY: Record<string, MetricInfo> = {
     detail: "How many completed Grands Prix were used to score the classification model against official results.",
     goodWhen: "More races → more trustworthy ranking metrics.",
   },
+  eval_protocol: {
+    label: "Eval protocol",
+    short: "How ranking was scored",
+    detail:
+      "leave_one_race_out means each scored GP was held out of training (no leakage from that race’s results or laps).",
+    goodWhen: "Prefer LOO over a simple temporal split for finishing-order claims.",
+  },
+  n_races: {
+    label: "Train races",
+    short: "Races used to fit the ranker",
+    detail: "Number of historical Grands Prix in the pairwise ranking training set.",
+    goodWhen: "More completed races with quali + results help.",
+  },
+  n_rows: {
+    label: "Ranker rows",
+    short: "Driver-race examples",
+    detail: "Total driver entries across training races for the ranking model.",
+    goodWhen: "Hundreds of rows give a more stable pairwise fit.",
+  },
+
   spearman: {
     label: "Spearman ρ",
     short: "Rank correlation",

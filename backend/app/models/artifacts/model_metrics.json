@@ -1,57 +1,60 @@
 {
-  "generated_at": "2026-10-17T20:04:25.360779+00:00",
+  "generated_at": "2026-10-18T16:21:08.374596+00:00",
   "models": [
     {
       "name": "Lap-time XGBoost",
       "kind": "lap_time",
-      "version": "xgboost-lap-v1",
+      "version": "xgboost-lap-v2",
       "primary": true,
       "metrics": {
-        "mae_s": 1.6174,
-        "rmse_s": 2.1428,
-        "n_train": 31020,
-        "n_test": 7755,
+        "mae_s": 1.6696,
+        "rmse_s": 2.0947,
+        "n_train": 60718,
+        "n_test": 15180,
         "target": "circuit_residual"
       },
-      "description": "Primary lap-time model used by strategy simulation (circuit baseline + residual)."
+      "description": "Primary lap-time model (circuit baseline + residual). Includes compound×age / circuit×compound, stint features, wet compounds, SC downweight."
     },
     {
       "name": "Lap-time Random Forest",
       "kind": "lap_time",
-      "version": "rf-lap-v1",
+      "version": "rf-lap-v2",
       "primary": false,
       "metrics": {
-        "mae_s": 1.7135,
-        "rmse_s": 2.1895,
-        "r2": 0.9581,
-        "n_train": 29312,
-        "n_test": 7328,
+        "mae_s": 1.7673,
+        "rmse_s": 2.5125,
+        "r2": 0.957,
+        "n_train": 45725,
+        "n_test": 11432,
         "target": "circuit_residual"
       },
       "description": "Benchmark regressor on the same features/split as XGBoost (not used in live inference)."
     },
     {
-      "name": "Classification (pace ranking)",
+      "name": "Classification (pairwise ranker)",
       "kind": "classification",
-      "version": "ranking-pace-v1",
+      "version": "ranking-pairwise-v1",
       "primary": true,
       "metrics": {
         "races_evaluated": 8,
-        "spearman": 0.8934,
-        "kendall_tau": 0.7776,
-        "top3_hit_rate": 0.8333,
-        "mae_position": 1.9007
+        "eval_protocol": "leave_one_race_out",
+        "spearman": 0.8154,
+        "kendall_tau": 0.6604,
+        "top3_hit_rate": 0.6667,
+        "mae_position": 2.2554
       },
-      "description": "Backtest of finishing-order prediction vs OpenF1 session_result. Same pace-ranking approach as the live Classification page (independent of Strategy tyre-window search)."
+      "description": "Leave-one-race-out backtest of pairwise XGBRanker vs OpenF1 session_result. Features: qualifying grid, recent/circuit form, shrunk pace, team form, rain."
     }
   ],
   "evaluation_races": 8,
   "notes": [
-    "session_result failed for 11436: Client error '404 Not Found' for url 'https://api.openf1.org/v1/session_result?session_key=11436'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
-    "session_result failed for 11428: Client error '404 Not Found' for url 'https://api.openf1.org/v1/session_result?session_key=11428'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
-    "session_result failed for 11420: Client error '404 Not Found' for url 'https://api.openf1.org/v1/session_result?session_key=11420'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
-    "session_result failed for 11412: Client error '404 Not Found' for url 'https://api.openf1.org/v1/session_result?session_key=11412'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
-    "session_result failed for 11404: Client error '404 Not Found' for url 'https://api.openf1.org/v1/session_result?session_key=11404'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
-    "session_result failed for 11396: Client error '404 Not Found' for url 'https://api.openf1.org/v1/session_result?session_key=11396'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404"
+    "LOO Spa-Francorchamps session=11334: spearman=0.946 mae_pos=1.47",
+    "LOO Hungaroring session=11342: spearman=0.874 mae_pos=2.21",
+    "LOO Zandvoort session=11353: spearman=0.831 mae_pos=2.12",
+    "LOO Monza session=11361: spearman=0.835 mae_pos=2.32",
+    "LOO Madring session=11369: spearman=0.884 mae_pos=2.11",
+    "LOO Baku session=11377: spearman=0.656 mae_pos=2.62",
+    "LOO Kuala Lumpur session=11731: spearman=0.606 mae_pos=3.40",
+    "LOO Singapore session=11388: spearman=0.891 mae_pos=1.79"
   ]
 }
