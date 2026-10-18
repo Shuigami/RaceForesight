@@ -21,8 +21,9 @@ After finishing a coherent piece of work in this repo, **commit without waiting 
 
 ### Windows / Git Bash
 - **Always run git via Git Bash**, not PowerShell — `git` is often missing from the PowerShell PATH on this machine.
-- Prefer: `"D:\Outils\Git\bin\bash.exe" -lc 'cd /d/Dev/RaceForesight && git …'` (or open a Git Bash shell in the repo root).
-- In Bash, HEREDOC is fine for commit messages; if stuck in PowerShell somehow, use `git commit -m "subject" -m "body"` instead.
+- Prefer: `"D:\Outils\Git\bin\bash.exe" -lc 'cd /d/Dev/RaceForesight && git …'` (install: `D:\Outils\Git`).
+- Pass commit messages with `-m` / `-F` only — never open an editor. `core.editor` is VS Code `--wait` and will hang non-interactive agents.
+- From a Cursor PowerShell tool call, quote carefully or write the message to a file and `git commit -F thatfile`.
 
 ## Product context (short)
 - **Strategy** = per-driver tyre / pit optimisation (race times under a plan).
