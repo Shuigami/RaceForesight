@@ -24,10 +24,6 @@ function parseView(raw: string | null): RaceView {
   return "classification";
 }
 
-function usesStrategyData(view: RaceView): boolean {
-  return view === "strategy" || view === "race-time";
-}
-
 export function RaceForesightApp() {
   const router = useRouter();
   const pathname = usePathname();
@@ -93,7 +89,7 @@ export function RaceForesightApp() {
   }, []);
 
   useEffect(() => {
-    if (!usesStrategyData(view) || meetingKey == null || strategyKey === meetingKey) return;
+    if (view !== "strategy" || meetingKey == null || strategyKey === meetingKey) return;
     void loadStrategy(meetingKey);
   }, [view, meetingKey, strategyKey, loadStrategy]);
 
@@ -147,12 +143,12 @@ export function RaceForesightApp() {
         <ExplainPanel title="Three views, one race">
           <p>
             <strong className="text-white">Classification</strong> ranks who finishes where from relative
-            race pace with a shared race shape. Its order and times will not match Race time or Strategy.
+            race pace with a shared race shape. Its finishing order will not match a pure pace-time sort.
           </p>
           <p>
-            <strong className="text-white">Race time</strong> compares predicted race duration under each
-            driver’s own optimal dry plan. For now it reuses the strategy lap model; a dedicated race-time
-            model can replace that later.
+            <strong className="text-white">Race time</strong> lists Classification’s pace-estimated race
+            times (green-flag pace × distance). For now it reuses that estimate; a dedicated race-time
+            model can replace it later.
           </p>
           <p>
             <strong className="text-white">Strategy</strong> finds the fastest dry tyre / pit plan for
@@ -216,42 +212,11 @@ export function RaceForesightApp() {
         </div>
       </header>
 
-      {error && usesStrategyData(view) && (
+      {error && view === "strategy" && (
         <div className="border border-accent/40 bg-accent/10 px-4 py-3 text-sm text-white">{error}</div>
       )}
 
-      {view === "race-time" && (
-        <>
-          {loadingStrategy && (
-            <div className="animate-pulse border border-white/10 bg-panel/60 px-4 py-8 text-center text-sm text-muted">
-              Predicting race times…
-            </div>
-          )}
-
-          {!loadingStrategy && strategy && (
-            <>
-              <section className="space-y-3">
-                <div className="flex flex-wrap items-baseline justify-between gap-3">
-                  <h2 className="font-display text-2xl tracking-wide text-white">Predicted race times</h2>
-                  <p className="text-xs text-muted">{strategy.model_version}</p>
-                </div>
-                <p className="text-xs text-fog">
-                  Based on the strategy lap model for now — a dedicated race-time model can replace this
-                  later. Times assume each driver runs their own optimal dry plan.
-                </p>
-                <RaceTimeBoard
-                  drivers={strategy.drivers}
-                  selected={selectedDriver}
-                  onSelect={onSelectDriver}
-                />
-              </section>
-
-              {loadingDetail && <div className="text-sm text-muted">Loading driver detail…</div>}
-              {detail && !loadingDetail && <DriverDetail detail={detail} />}
-            </>
-          )}
-        </>
-      )}
+      <RaceTimeBoard meetingKey={meetingKey} active={view === "race-time"} />
 
       {view === "strategy" && (
         <>
