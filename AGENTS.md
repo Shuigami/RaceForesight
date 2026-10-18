@@ -22,7 +22,8 @@ After finishing a coherent piece of work in this repo, **commit without waiting 
 ### Windows / Git Bash
 - **Always run git via Git Bash**, not PowerShell — `git` is often missing from the PowerShell PATH on this machine.
 - Prefer: `"D:\Outils\Git\bin\bash.exe" -lc 'cd /d/Dev/RaceForesight && git …'` (install: `D:\Outils\Git`).
-- Pass commit messages with `-m` / `-F` only — never open an editor. `core.editor` is VS Code `--wait` and will hang non-interactive agents.
+- Pass commit messages with `-m` / `-F` only — never open an editor.
+- This repo’s **local** `core.editor` is `true` (no UI). Global may still be VS Code `--wait`; do not change global unless the user asks. If an editor still opens, force with `git -c core.editor=true commit …`.
 - From a Cursor PowerShell tool call, quote carefully or write the message to a file and `git commit -F thatfile`.
 
 ## Product context (short)
