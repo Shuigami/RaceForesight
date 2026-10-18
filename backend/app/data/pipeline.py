@@ -10,7 +10,72 @@ import pandas as pd
 from app.clients.openf1 import OpenF1Client
 from app.config import settings
 from app.domain.circuit_laps import resolve_race_laps
-from app.domain.models import MeetingSummary
+from app.domain.models import ActualDriverStrategy, MeetingSummary, StintPlan
+
+
+def actual_strategies_from_stints(
+    stints: pd.DataFrame,
+    pits: pd.DataFrame | None = None,
+) -> list[ActualDriverStrategy]:
+    """Map OpenF1 race stints to per-driver ground-truth tyre plans."""
+    if stints.empty or "driver_number" not in stints.columns:
+        return []
+
+    pits_by_driver: dict[int, list[int]] = {}
+    if pits is not None and not pits.empty and "driver_number" in pits.columns and "lap_number" in pits.columns:
+        for dnum, grp in pits.groupby("driver_number"):
+            laps = sorted(int(x) for x in grp["lap_number"].dropna().tolist())
+            pits_by_driver[int(dnum)] = laps
+
+    out: list[ActualDriverStrategy] = []
+    for dnum, grp in stints.groupby("driver_number"):
+        rows = grp.copy()
+        if "stint_number" in rows.columns:
+            rows = rows.sort_values(["stint_number", "lap_start"], na_position="last")
+        else:
+            rows = rows.sort_values("lap_start", na_position="last")
+
+        plans: list[StintPlan] = []
+        for _, row in rows.iterrows():
+            if pd.isna(row.get("lap_start")):
+                continue
+            lap_start = int(row["lap_start"])
+            lap_end_raw = row.get("lap_end")
+            lap_end = int(lap_end_raw) if pd.notna(lap_end_raw) else lap_start
+            if lap_end < lap_start:
+                continue
+            tyre_raw = row.get("tyre_age_at_start")
+            plans.append(
+                StintPlan(
+                    compound=str(row.get("compound") or "UNKNOWN").upper(),
+                    lap_start=lap_start,
+                    lap_end=lap_end,
+                    tyre_age_at_start=int(tyre_raw) if pd.notna(tyre_raw) else 0,
+                )
+            )
+        if not plans:
+            continue
+
+        compounds = [p.compound for p in plans]
+        derived_pits = [p.lap_end for p in plans[:-1]]
+        pit_laps = pits_by_driver.get(int(dnum)) or derived_pits
+        # Keep pit count aligned with stint boundaries when OpenF1 pits are noisy
+        if len(pit_laps) != len(plans) - 1:
+            pit_laps = derived_pits
+        stops = max(0, len(plans) - 1)
+        label = f"{stops}-stop {'→'.join(compounds)}"
+        out.append(
+            ActualDriverStrategy(
+                driver_number=int(dnum),
+                stops=stops,
+                compounds=compounds,
+                pit_laps=pit_laps,
+                stints=plans,
+                strategy_label=label,
+            )
+        )
+    out.sort(key=lambda a: a.driver_number)
+    return out
 
 
 class RaceDataPipeline:
@@ -336,6 +401,16 @@ class RaceDataPipeline:
             durations.extend(vals.tolist())
         avg_pit = float(sum(durations) / len(durations)) if durations else 22.0
         return avg_pit + settings.pit_loss_extra_seconds
+
+    def actual_strategies_for_meeting(self, meeting_key: int) -> list[ActualDriverStrategy]:
+        """Ground-truth tyre plans for a completed race; empty if not raced / no stints."""
+        session_key = self.race_session_key(meeting_key)
+        if not session_key:
+            return []
+        data = self.ingest_session(session_key)
+        if data["stints"].empty or data["laps"].empty:
+            return []
+        return actual_strategies_from_stints(data["stints"], data.get("pits"))
 
     def drivers_for_meeting(self, meeting_key: int) -> pd.DataFrame:
         session_key = self.race_session_key(meeting_key)

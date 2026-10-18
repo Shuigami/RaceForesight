@@ -176,6 +176,27 @@ export function DriverDetail({ detail }: { detail: StrategyDetail }) {
         </ul>
       </div>
 
+      {detail.actual && (
+        <div className="border border-white/10 bg-ink-900/40 px-4 py-3">
+          <p className="text-[11px] uppercase tracking-[0.16em] text-muted">Ran in race</p>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <span className="font-mono text-xs text-fog">{detail.actual.stops}-stop</span>
+            <CompoundPills compounds={detail.actual.compounds} />
+            <span className="font-mono text-xs text-muted">
+              @{detail.actual.pit_laps.join(", ") || "—"}
+            </span>
+            <span className="text-xs text-muted">{detail.actual.strategy_label}</span>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {detail.actual.stints.map((stint, i) => (
+              <span key={`ran-${stint.compound}-${i}`} className="font-mono text-xs text-fog">
+                S{i + 1} {stint.compound.slice(0, 1)} L{stint.lap_start}–{stint.lap_end}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-[11px] uppercase tracking-[0.16em] text-muted">Stints — click to inspect</h3>

@@ -219,9 +219,15 @@ export function RaceForesightApp() {
                 </div>
                 <StrategyGrid
                   drivers={strategy.drivers}
+                  actual={strategy.actual}
                   selected={selectedDriver}
                   onSelect={onSelectDriver}
                 />
+                {strategy.actual && strategy.actual.length > 0 && (
+                  <p className="text-xs text-muted">
+                    Ran columns are OpenF1 race stints for this GP — compare to the model’s predicted plan.
+                  </p>
+                )}
               </section>
 
               {loadingDetail && <div className="text-sm text-muted">Loading driver detail…</div>}

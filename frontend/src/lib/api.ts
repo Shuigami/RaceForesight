@@ -33,9 +33,19 @@ export type DriverStrategy = {
   strategy_label: string;
 };
 
+export type ActualDriverStrategy = {
+  driver_number: number;
+  stops: number;
+  compounds: string[];
+  pit_laps: number[];
+  stints: StintPlan[];
+  strategy_label: string;
+};
+
 export type StrategyResponse = {
   meeting: MeetingSummary;
   drivers: DriverStrategy[];
+  actual?: ActualDriverStrategy[];
   model_version: string;
   generated_at: string;
 };
@@ -72,6 +82,7 @@ export type StrategyDetail = {
   degradation_curve: PacePoint[];
   stint_curves: StintPaceCurve[];
   options: StrategyOption[];
+  actual?: ActualDriverStrategy | null;
   model_version: string;
 };
 

@@ -1,16 +1,20 @@
 "use client";
 
-import type { DriverStrategy } from "@/lib/api";
+import type { ActualDriverStrategy, DriverStrategy } from "@/lib/api";
 import { formatRaceTime } from "@/lib/api";
 import { CompoundPills } from "./CompoundPills";
 
 type Props = {
   drivers: DriverStrategy[];
+  actual?: ActualDriverStrategy[];
   selected: number | null;
   onSelect: (driverNumber: number) => void;
 };
 
-export function StrategyGrid({ drivers, selected, onSelect }: Props) {
+export function StrategyGrid({ drivers, actual = [], selected, onSelect }: Props) {
+  const actualByDriver = new Map(actual.map((a) => [a.driver_number, a]));
+  const showActual = actual.length > 0;
+
   return (
     <div className="overflow-x-auto rounded-sm border border-white/10 bg-panel/80 backdrop-blur">
       <table className="w-full min-w-[720px] border-collapse text-left text-sm">
@@ -19,15 +23,23 @@ export function StrategyGrid({ drivers, selected, onSelect }: Props) {
             <th className="px-4 py-3 font-medium">#</th>
             <th className="px-4 py-3 font-medium">Driver</th>
             <th className="px-4 py-3 font-medium">Team</th>
-            <th className="px-4 py-3 font-medium">Strategy</th>
+            <th className="px-4 py-3 font-medium">Predicted</th>
             <th className="px-4 py-3 font-medium">Compounds</th>
             <th className="px-4 py-3 font-medium">Pit laps</th>
+            {showActual && (
+              <>
+                <th className="px-4 py-3 font-medium">Ran</th>
+                <th className="px-4 py-3 font-medium">Actual compounds</th>
+                <th className="px-4 py-3 font-medium">Actual pits</th>
+              </>
+            )}
             <th className="px-4 py-3 font-medium text-right">Strategy race time</th>
           </tr>
         </thead>
         <tbody>
           {drivers.map((d, idx) => {
             const active = selected === d.driver_number;
+            const ran = actualByDriver.get(d.driver_number);
             return (
               <tr
                 key={d.driver_number}
@@ -57,6 +69,23 @@ export function StrategyGrid({ drivers, selected, onSelect }: Props) {
                   <CompoundPills compounds={d.compounds} />
                 </td>
                 <td className="px-4 py-3 font-mono text-fog">{d.pit_laps.join(", ")}</td>
+                {showActual && (
+                  <>
+                    <td className="px-4 py-3">
+                      {ran ? (
+                        <span className="font-mono text-xs text-fog">{ran.stops}-stop</span>
+                      ) : (
+                        <span className="text-xs text-muted">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {ran ? <CompoundPills compounds={ran.compounds} /> : <span className="text-xs text-muted">—</span>}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-fog">
+                      {ran ? ran.pit_laps.join(", ") || "—" : "—"}
+                    </td>
+                  </>
+                )}
                 <td className="px-4 py-3 text-right font-mono tabular-nums text-white">
                   {formatRaceTime(d.predicted_race_time_s)}
                 </td>

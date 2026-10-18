@@ -42,9 +42,21 @@ class DriverStrategy(BaseModel):
     strategy_label: str
 
 
+class ActualDriverStrategy(BaseModel):
+    """Ground-truth tyre plan from OpenF1 race stints (no model race time)."""
+
+    driver_number: int
+    stops: int
+    compounds: list[str]
+    pit_laps: list[int]
+    stints: list[StintPlan]
+    strategy_label: str
+
+
 class StrategyResponse(BaseModel):
     meeting: MeetingSummary
     drivers: list[DriverStrategy]
+    actual: list[ActualDriverStrategy] = Field(default_factory=list)
     model_version: str = "xgboost-lap-v2"
     generated_at: str
 
@@ -83,6 +95,7 @@ class StrategyDetail(BaseModel):
     stint_curves: list[StintPaceCurve] = Field(default_factory=list)
     # Recommended first, then alternatives — used by interactive detail UI
     options: list[StrategyOption] = Field(default_factory=list)
+    actual: ActualDriverStrategy | None = None
     model_version: str = "xgboost-lap-v2"
 
 

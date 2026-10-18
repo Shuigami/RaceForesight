@@ -412,9 +412,11 @@ class StrategySimulator:
             results.append(best)
 
         results.sort(key=lambda d: d.predicted_race_time_s)
+        actual = self.pipeline.actual_strategies_for_meeting(meeting.meeting_key)
         return StrategyResponse(
             meeting=meeting,
             drivers=results,
+            actual=actual,
             model_version=self.model.meta.get("version", "xgboost-lap-v1"),
             generated_at=datetime.now(timezone.utc).isoformat(),
         )
@@ -435,6 +437,8 @@ class StrategySimulator:
             pace_offset=offsets.get(int(driver_number), 0.0),
             top_n=6,
         )
+        actuals = self.pipeline.actual_strategies_for_meeting(meeting.meeting_key)
+        actual = next((a for a in actuals if a.driver_number == int(driver_number)), None)
         return StrategyDetail(
             meeting=meeting,
             best=best,
@@ -442,5 +446,6 @@ class StrategySimulator:
             degradation_curve=deg,
             stint_curves=stint_curves,
             options=options,
+            actual=actual,
             model_version=self.model.meta.get("version", "xgboost-lap-v1"),
         )

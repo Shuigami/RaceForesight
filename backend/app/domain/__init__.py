@@ -1,4 +1,5 @@
 from .models import (
+    ActualDriverStrategy,
     DriverStrategy,
     MeetingSummary,
     PitWindow,
@@ -8,6 +9,7 @@ from .models import (
 )
 
 __all__ = [
+    "ActualDriverStrategy",
     "DriverStrategy",
     "MeetingSummary",
     "PitWindow",
