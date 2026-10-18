@@ -1,0 +1,25 @@
+{
+  "version": "race-time-xgb-v1",
+  "device": "cuda",
+  "n_races": 35,
+  "n_train": 389,
+  "n_test": 98,
+  "mae_s": 540.8912,
+  "rmse_s": 909.0805,
+  "feature_columns": [
+    "grid_position",
+    "recent_form",
+    "circuit_form",
+    "pace_offset",
+    "team_form",
+    "rainfall",
+    "n_pace_samples",
+    "is_newcomer",
+    "grid_missing",
+    "race_laps",
+    "circuit_baseline",
+    "pit_loss",
+    "pace_race_proxy"
+  ],
+  "target": "race_duration_s"
+}

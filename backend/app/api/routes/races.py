@@ -10,6 +10,7 @@ from app.domain.models import (
     StrategyResponse,
 )
 from app.simulation.prediction import ClassificationPredictor
+from app.simulation.race_time import RaceTimePredictor
 from app.simulation.strategy import StrategySimulator
 
 router = APIRouter(prefix="/api", tags=["races"])
@@ -28,6 +29,11 @@ def _simulator() -> StrategySimulator:
 @lru_cache(maxsize=1)
 def _predictor() -> ClassificationPredictor:
     return ClassificationPredictor(simulator=_simulator())
+
+
+@lru_cache(maxsize=1)
+def _race_time_predictor() -> RaceTimePredictor:
+    return RaceTimePredictor(simulator=_simulator())
 
 
 @router.get("/races", response_model=list[MeetingSummary])
@@ -79,6 +85,18 @@ def race_prediction(meeting_key: int) -> ClassificationResponse:
     try:
         key = None if meeting_key <= 0 else meeting_key
         return _predictor().predict(key)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/races/{meeting_key}/race-time", response_model=ClassificationResponse)
+def race_time(meeting_key: int) -> ClassificationResponse:
+    """Predicted race durations — dedicated race-time model (pace fallback if untrained)."""
+    try:
+        key = None if meeting_key <= 0 else meeting_key
+        return _race_time_predictor().predict(key)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:

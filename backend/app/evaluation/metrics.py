@@ -17,7 +17,9 @@ from app.config import settings
 from app.data.pipeline import RaceDataPipeline
 from app.domain.models import ModelScore, ModelsMetricsResponse
 from app.features.builder import FEATURE_COLUMNS, FeatureBuilder
+from app.domain.circuit_laps import resolve_race_laps
 from app.models.lap_time import LapTimeModel
+from app.models.race_time import RaceTimeModel, normalize_race_duration_s
 from app.models.ranking import RankingModel
 
 
@@ -66,10 +68,12 @@ class ModelEvaluator:
         xgb_score = self._score_xgboost(frame)
         rf_score = self._score_random_forest(frame)
         ranking_score, n_races, notes = self._score_ranking_loo(years=years, max_races=ranking_races)
+        race_time_score, rt_notes = self._score_race_time_loo(years=years, max_races=ranking_races)
+        notes.extend(rt_notes)
 
         response = ModelsMetricsResponse(
             generated_at=datetime.now(timezone.utc).isoformat(),
-            models=[xgb_score, rf_score, ranking_score],
+            models=[xgb_score, rf_score, ranking_score, race_time_score],
             evaluation_races=n_races,
             notes=notes,
         )
@@ -319,3 +323,141 @@ class ModelEvaluator:
             ),
         )
         return score, evaluated, notes
+
+    def _build_labeled_race_times_inline(self, *, years: list[int], max_sessions: int) -> list[pd.DataFrame]:
+        sessions = self.pipeline.list_race_sessions(years)
+        if sessions.empty:
+            return []
+        sessions = sessions.sort_values("date_start").tail(max_sessions)
+        history_all = self.pipeline.race_results_history(years=years, max_sessions=max_sessions + 5)
+        pace = self.pipeline.build_training_frame(years=years, max_sessions=max_sessions, completed_only=True)
+        rt = RaceTimeModel(self.artifact_dir)
+        labeled: list[pd.DataFrame] = []
+        for _, sess in sessions.iterrows():
+            session_key = int(sess["session_key"])
+            meeting_key = int(sess["meeting_key"])
+            circuit = str(sess.get("circuit_short_name") or "")
+            try:
+                actual = self.pipeline.client.session_result(session_key)
+            except Exception:
+                continue
+            if actual.empty or "driver_number" not in actual.columns or "duration" not in actual.columns:
+                continue
+            time_map: dict[int, float] = {}
+            for _, row in actual.dropna(subset=["driver_number"]).iterrows():
+                if bool(row.get("dnf")) or bool(row.get("dns")) or bool(row.get("dsq")):
+                    continue
+                dur = normalize_race_duration_s(row.get("duration"))
+                if dur is not None:
+                    time_map[int(row["driver_number"])] = dur
+            if len(time_map) < 8:
+                continue
+            drivers = self.pipeline.ingest_session(session_key)["drivers"]
+            if drivers.empty:
+                continue
+            drivers = drivers.drop_duplicates(subset=["driver_number"])
+            if "team_name" in drivers.columns:
+                drivers = drivers[drivers["team_name"].notna()]
+            hist = history_all[history_all["session_key"].astype(int) != session_key] if not history_all.empty else history_all
+            pace_ex = pace[pace["session_key"].astype(int) != session_key] if not pace.empty else pace
+            grid = self.pipeline.qualifying_grid(meeting_key)
+            weather = self.pipeline.ingest_session(session_key).get("weather", pd.DataFrame())
+            rainfall = float(weather["rainfall"].mean()) if not weather.empty and "rainfall" in weather.columns else 0.0
+            feats = rt.build_race_features(
+                drivers=drivers,
+                grid=grid,
+                history=hist,
+                pace_frame=pace_ex,
+                circuit=circuit,
+                rainfall=rainfall,
+                race_laps=resolve_race_laps(circuit),
+                pit_loss=self.pipeline.estimate_pit_loss(circuit_short_name=circuit),
+            )
+            feats["race_time_s"] = feats["driver_number"].map(time_map)
+            feats["session_key"] = session_key
+            feats["circuit_short_name"] = circuit
+            feats = feats.dropna(subset=["race_time_s"])
+            if len(feats) >= 8:
+                labeled.append(feats)
+        return labeled
+
+    def _score_race_time_loo(self, *, years: list[int], max_races: int) -> tuple[ModelScore, list[str]]:
+        notes: list[str] = []
+        labeled = self._build_labeled_race_times_inline(years=years, max_sessions=max(40, max_races + 20))
+        if len(labeled) < 3:
+            return (
+                ModelScore(
+                    name="Race time (XGBoost)",
+                    kind="race_time",
+                    version=RaceTimeModel.VERSION,
+                    primary=True,
+                    metrics={},
+                    description="Insufficient historical races with duration labels for LOO eval.",
+                ),
+                ["Need >=3 races with session_result.duration for LOO race-time evaluation."],
+            )
+
+        holdouts = labeled[-max_races:]
+        mae_vals: list[float] = []
+        rmse_vals: list[float] = []
+        evaluated = 0
+
+        for holdout in holdouts:
+            sk = int(holdout["session_key"].iloc[0])
+            train_set = [f for f in labeled if int(f["session_key"].iloc[0]) != sk]
+            if len(train_set) < 3:
+                notes.append(f"skip race-time LOO session {sk}: not enough train races")
+                continue
+            with tempfile.TemporaryDirectory(prefix="rf-rt-loo-") as tmp:
+                model = RaceTimeModel(Path(tmp))
+                try:
+                    model.train(train_set)
+                except Exception as exc:
+                    notes.append(f"race-time train failed for holdout {sk}: {exc}")
+                    continue
+                pred = model.predict(holdout)
+                pairs = []
+                for _, row in pred.iterrows():
+                    true = holdout.loc[holdout["driver_number"] == row["driver_number"], "race_time_s"]
+                    if true.empty:
+                        continue
+                    pairs.append((float(row["predicted_race_time_s"]), float(true.iloc[0])))
+                if len(pairs) < 6:
+                    continue
+                y_hat = np.array([p[0] for p in pairs], dtype=float)
+                y_true = np.array([p[1] for p in pairs], dtype=float)
+                mae = float(mean_absolute_error(y_true, y_hat))
+                rmse = float(np.sqrt(mean_squared_error(y_true, y_hat)))
+                mae_vals.append(mae)
+                rmse_vals.append(rmse)
+                evaluated += 1
+                circuit = str(holdout["circuit_short_name"].iloc[0])
+                notes.append(f"LOO race-time {circuit} session={sk}: mae={mae:.1f}s rmse={rmse:.1f}s")
+
+        metrics: dict[str, float | int | str | None] = {
+            "races_evaluated": evaluated,
+            "eval_protocol": "leave_one_race_out",
+            "mae_s": round(float(np.mean(mae_vals)), 4) if mae_vals else None,
+            "rmse_s": round(float(np.mean(rmse_vals)), 4) if rmse_vals else None,
+        }
+        if RaceTimeModel(self.artifact_dir).is_ready:
+            meta = RaceTimeModel(self.artifact_dir).load().meta
+            metrics["n_train"] = int(meta.get("n_train", 0))
+            metrics["n_test"] = int(meta.get("n_test", 0))
+            metrics["target"] = str(meta.get("target", "race_duration_s"))
+
+        if evaluated == 0:
+            notes.append("Could not evaluate race-time on any holdout race.")
+
+        score = ModelScore(
+            name="Race time (XGBoost)",
+            kind="race_time",
+            version=RaceTimeModel.VERSION,
+            primary=True,
+            metrics=metrics,
+            description=(
+                "Leave-one-race-out MAE/RMSE vs OpenF1 session_result.duration for classified finishers. "
+                "Features: grid, form, pace, race distance, pit loss, pace×distance proxy."
+            ),
+        )
+        return score, notes

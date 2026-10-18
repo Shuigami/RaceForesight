@@ -29,5 +29,6 @@ After finishing a coherent piece of work in this repo, **commit without waiting 
 ## Product context (short)
 - **Strategy** = per-driver tyre / pit optimisation (race times under a plan).
 - **Classification** = finishing-order ranker (grid + form + pace), not a re-sort of Strategy times.
+- **Race time** = dedicated duration regressor (`session_result.duration`), not Classification order and not Strategy tyre times.
 - Backend: FastAPI + XGBoost / XGBRanker + OpenF1. Frontend: Next.js.
-- Model `.joblib` files are gitignored; JSON metrics/meta under `backend/app/models/artifacts/` may be committed. Retrain with `scripts/train_model.py` and `scripts/train_ranker.py`.
+- Model `.joblib` files are gitignored; JSON metrics/meta under `backend/app/models/artifacts/` may be committed. Retrain with `scripts/train_model.py`, `scripts/train_ranker.py`, and `scripts/train_race_time.py`.

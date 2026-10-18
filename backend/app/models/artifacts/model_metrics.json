@@ -44,6 +44,22 @@
         "mae_position": 2.2554
       },
       "description": "Leave-one-race-out backtest of pairwise XGBRanker vs OpenF1 session_result. Features: qualifying grid, recent/circuit form, shrunk pace, team form, rain."
+    },
+    {
+      "name": "Race time (XGBoost)",
+      "kind": "race_time",
+      "version": "race-time-xgb-v1",
+      "primary": true,
+      "metrics": {
+        "mae_s": 540.8912,
+        "rmse_s": 909.0805,
+        "n_train": 389,
+        "n_test": 98,
+        "n_races": 35,
+        "target": "race_duration_s",
+        "eval_protocol": "temporal_holdout"
+      },
+      "description": "Predicts total race duration vs OpenF1 session_result.duration. Features: grid, form, pace, race distance, pit loss, pace×distance proxy. Re-run evaluate for leave-one-race-out scores."
     }
   ],
   "evaluation_races": 8,
@@ -55,6 +71,7 @@
     "LOO Madring session=11369: spearman=0.884 mae_pos=2.11",
     "LOO Baku session=11377: spearman=0.656 mae_pos=2.62",
     "LOO Kuala Lumpur session=11731: spearman=0.606 mae_pos=3.40",
-    "LOO Singapore session=11388: spearman=0.891 mae_pos=1.79"
+    "LOO Singapore session=11388: spearman=0.891 mae_pos=1.79",
+    "Race-time metrics from train temporal holdout (35 races); run POST /api/models/evaluate for LOO."
   ]
 }
