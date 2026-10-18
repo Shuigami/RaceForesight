@@ -1,5 +1,5 @@
-import { ClassificationBoard } from "@/components/ClassificationBoard";
+import { redirect } from "next/navigation";
 
 export default function ClassificationPage() {
-  return <ClassificationBoard />;
+  redirect("/?view=classification");
 }

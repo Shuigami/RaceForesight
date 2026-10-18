@@ -1,47 +1,32 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   fetchPrediction,
-  fetchRaces,
   formatRaceTime,
   type ClassificationResponse,
-  type MeetingSummary,
 } from "@/lib/api";
-import { ExplainPanel } from "./ExplainPanel";
 
-export function ClassificationBoard() {
-  const [races, setRaces] = useState<MeetingSummary[]>([]);
-  const [meetingKey, setMeetingKey] = useState<number | null>(null);
+type Props = {
+  meetingKey: number | null;
+  active: boolean;
+};
+
+export function ClassificationBoard({ meetingKey, active }: Props) {
   const [prediction, setPrediction] = useState<ClassificationResponse | null>(null);
+  const [loadedKey, setLoadedKey] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await fetchRaces();
-        if (cancelled) return;
-        setRaces(data);
-        const def = data.find((r) => r.is_default) ?? data[data.length - 1];
-        if (def) setMeetingKey(def.meeting_key);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load races");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const load = useCallback(async (key: number) => {
     setLoading(true);
     setError(null);
     try {
       setPrediction(await fetchPrediction(key));
+      setLoadedKey(key);
     } catch (err) {
       setPrediction(null);
+      setLoadedKey(null);
       setError(err instanceof Error ? err.message : "Prediction failed");
     } finally {
       setLoading(false);
@@ -49,67 +34,22 @@ export function ClassificationBoard() {
   }, []);
 
   useEffect(() => {
-    if (meetingKey != null) void load(meetingKey);
-  }, [meetingKey, load]);
+    if (!active || meetingKey == null || loadedKey === meetingKey) return;
+    void load(meetingKey);
+  }, [active, meetingKey, loadedKey, load]);
 
-  const selected = useMemo(
-    () => races.find((r) => r.meeting_key === meetingKey) ?? prediction?.meeting ?? null,
-    [races, meetingKey, prediction],
-  );
+  useEffect(() => {
+    if (meetingKey == null) return;
+    if (loadedKey != null && loadedKey !== meetingKey) {
+      setPrediction(null);
+      setLoadedKey(null);
+    }
+  }, [meetingKey, loadedKey]);
+
+  if (!active) return null;
 
   return (
-    <main className="relative mx-auto flex w-full max-w-6xl flex-col gap-8 px-5 pb-16 pt-10 md:px-8">
-      <header className="space-y-4">
-        <p className="text-[11px] uppercase tracking-[0.28em] text-accent">Phase 2</p>
-        <h1 className="font-display text-5xl tracking-[0.04em] text-white md:text-6xl">
-          Predicted classification
-        </h1>
-        <p className="max-w-2xl text-fog">
-          Who finishes where, from relative race pace — a different question than Strategy&apos;s
-          per-driver tyre optimisation.
-        </p>
-
-        <ExplainPanel title="Strategy vs Classification">
-          <p>
-            <strong className="text-white">Strategy</strong> searches tyre compounds and pit windows so
-            each driver gets their own optimal plan (and a strategy race time under that plan).
-          </p>
-          <p>
-            <strong className="text-white">Classification</strong> ranks the grid with a shared dry-race
-            shape: circuit baseline lap + each driver&apos;s recent pace offset + one typical pit stop.
-            No per-driver tyre-window search — so <em>est. times here will not match Strategy</em>.
-          </p>
-          <p>
-            <strong className="text-white">Pos</strong> is the main output. Est. time / gap are secondary
-            green-flag pace estimates (scheduled race laps × typical competitive lap + one pit). They do{" "}
-            <em>not</em> include Safety Car / VSC / red flags, so wall-clock race times are often longer in
-            reality. We also do not yet model 2026 car regs as a separate factor — see{" "}
-            <strong className="text-white">Models</strong> for ranking backtests.
-          </p>
-        </ExplainPanel>
-
-        <label className="flex min-w-[240px] max-w-md flex-col gap-2">
-          <span className="text-[11px] uppercase tracking-[0.16em] text-muted">Grand Prix</span>
-          <select
-            className="border border-white/15 bg-ink-850 px-3 py-2.5 text-sm text-white outline-none focus:border-accent"
-            value={meetingKey ?? ""}
-            onChange={(e) => setMeetingKey(Number(e.target.value))}
-          >
-            {races.map((race) => (
-              <option key={race.meeting_key} value={race.meeting_key}>
-                {race.year} · {race.meeting_name}
-                {race.is_default ? " (next)" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-        {selected && (
-          <p className="text-sm text-muted">
-            {selected.circuit_short_name || selected.country_name} · {selected.race_laps} laps
-          </p>
-        )}
-      </header>
-
+    <>
       {error && (
         <div className="border border-accent/40 bg-accent/10 px-4 py-3 text-sm text-white">{error}</div>
       )}
@@ -126,6 +66,10 @@ export function ClassificationBoard() {
             <p className="text-xs text-muted">{prediction.model_version}</p>
           </div>
           <p className="text-xs text-fog">{prediction.note}</p>
+          <p className="text-xs text-muted">
+            Pos is the main output. Pace est. time / gap are green-flag estimates (not wall-clock race
+            times) and will not match Strategy race times.
+          </p>
           <div className="overflow-x-auto rounded-sm border border-white/10 bg-panel/80 backdrop-blur">
             <table className="w-full min-w-[640px] border-collapse text-left text-sm">
               <thead>
@@ -183,6 +127,6 @@ export function ClassificationBoard() {
           </div>
         </section>
       )}
-    </main>
+    </>
   );
 }
