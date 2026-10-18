@@ -13,12 +13,19 @@ import {
 import { ClassificationBoard } from "./ClassificationBoard";
 import { DriverDetail } from "./DriverDetail";
 import { ExplainPanel } from "./ExplainPanel";
+import { RaceTimeBoard } from "./RaceTimeBoard";
 import { StrategyGrid } from "./StrategyGrid";
 
-type RaceView = "strategy" | "classification";
+type RaceView = "classification" | "race-time" | "strategy";
 
 function parseView(raw: string | null): RaceView {
-  return raw === "strategy" ? "strategy" : "classification";
+  if (raw === "strategy") return "strategy";
+  if (raw === "race-time") return "race-time";
+  return "classification";
+}
+
+function usesStrategyData(view: RaceView): boolean {
+  return view === "strategy" || view === "race-time";
 }
 
 export function RaceForesightApp() {
@@ -86,7 +93,7 @@ export function RaceForesightApp() {
   }, []);
 
   useEffect(() => {
-    if (view !== "strategy" || meetingKey == null || strategyKey === meetingKey) return;
+    if (!usesStrategyData(view) || meetingKey == null || strategyKey === meetingKey) return;
     void loadStrategy(meetingKey);
   }, [view, meetingKey, strategyKey, loadStrategy]);
 
@@ -134,18 +141,22 @@ export function RaceForesightApp() {
           Race
         </h1>
         <p className="max-w-xl text-base text-fog md:text-lg">
-          Two questions for the same Grand Prix — tyre plans per car, then finishing order.
+          Three views for the same Grand Prix — finishing order, race times, then tyre plans.
         </p>
 
-        <ExplainPanel title="Two models, one race">
-          <p>
-            <strong className="text-white">Strategy</strong> finds the fastest dry tyre / pit plan for
-            each driver. Strategy race times assume everyone runs their own optimum — useful to compare
-            plans, not to call the result.
-          </p>
+        <ExplainPanel title="Three views, one race">
           <p>
             <strong className="text-white">Classification</strong> ranks who finishes where from relative
-            race pace with a shared race shape. Its order and times will not match the Strategy table.
+            race pace with a shared race shape. Its order and times will not match Race time or Strategy.
+          </p>
+          <p>
+            <strong className="text-white">Race time</strong> compares predicted race duration under each
+            driver’s own optimal dry plan. For now it reuses the strategy lap model; a dedicated race-time
+            model can replace that later.
+          </p>
+          <p>
+            <strong className="text-white">Strategy</strong> finds the fastest dry tyre / pit plan for
+            each driver. Useful to compare plans, not to call the result.
           </p>
         </ExplainPanel>
 
@@ -187,6 +198,15 @@ export function RaceForesightApp() {
           <button
             type="button"
             role="tab"
+            aria-selected={view === "race-time"}
+            className={tabClass(view === "race-time")}
+            onClick={() => setView("race-time")}
+          >
+            Race time
+          </button>
+          <button
+            type="button"
+            role="tab"
             aria-selected={view === "strategy"}
             className={tabClass(view === "strategy")}
             onClick={() => setView("strategy")}
@@ -196,8 +216,41 @@ export function RaceForesightApp() {
         </div>
       </header>
 
-      {error && view === "strategy" && (
+      {error && usesStrategyData(view) && (
         <div className="border border-accent/40 bg-accent/10 px-4 py-3 text-sm text-white">{error}</div>
+      )}
+
+      {view === "race-time" && (
+        <>
+          {loadingStrategy && (
+            <div className="animate-pulse border border-white/10 bg-panel/60 px-4 py-8 text-center text-sm text-muted">
+              Predicting race times…
+            </div>
+          )}
+
+          {!loadingStrategy && strategy && (
+            <>
+              <section className="space-y-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-3">
+                  <h2 className="font-display text-2xl tracking-wide text-white">Predicted race times</h2>
+                  <p className="text-xs text-muted">{strategy.model_version}</p>
+                </div>
+                <p className="text-xs text-fog">
+                  Based on the strategy lap model for now — a dedicated race-time model can replace this
+                  later. Times assume each driver runs their own optimal dry plan.
+                </p>
+                <RaceTimeBoard
+                  drivers={strategy.drivers}
+                  selected={selectedDriver}
+                  onSelect={onSelectDriver}
+                />
+              </section>
+
+              {loadingDetail && <div className="text-sm text-muted">Loading driver detail…</div>}
+              {detail && !loadingDetail && <DriverDetail detail={detail} />}
+            </>
+          )}
+        </>
       )}
 
       {view === "strategy" && (
