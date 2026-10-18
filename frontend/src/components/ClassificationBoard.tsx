@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   fetchPrediction,
-  formatRaceTime,
   type ClassificationResponse,
+  type PredictedFinish,
 } from "@/lib/api";
+import { ClassificationDetail } from "./ClassificationDetail";
 
 type Props = {
   meetingKey: number | null;
@@ -17,10 +18,12 @@ export function ClassificationBoard({ meetingKey, active }: Props) {
   const [loadedKey, setLoadedKey] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<PredictedFinish | null>(null);
 
   const load = useCallback(async (key: number) => {
     setLoading(true);
     setError(null);
+    setSelected(null);
     try {
       setPrediction(await fetchPrediction(key));
       setLoadedKey(key);
@@ -43,6 +46,7 @@ export function ClassificationBoard({ meetingKey, active }: Props) {
     if (loadedKey != null && loadedKey !== meetingKey) {
       setPrediction(null);
       setLoadedKey(null);
+      setSelected(null);
     }
   }, [meetingKey, loadedKey]);
 
@@ -66,65 +70,64 @@ export function ClassificationBoard({ meetingKey, active }: Props) {
             <p className="text-xs text-muted">{prediction.model_version}</p>
           </div>
           <p className="text-xs text-fog">{prediction.note}</p>
-          <p className="text-xs text-muted">
-            Pos is the main output. Pace est. time / gap are green-flag estimates (not wall-clock race
-            times) and will not match Strategy race times.
-          </p>
           <div className="overflow-x-auto rounded-sm border border-white/10 bg-panel/80 backdrop-blur">
-            <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[520px] border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-white/10 text-[11px] uppercase tracking-[0.14em] text-muted">
                   <th className="px-4 py-3 font-medium">Pos</th>
                   <th className="px-4 py-3 font-medium">Driver</th>
                   <th className="px-4 py-3 font-medium">Team</th>
                   <th className="px-4 py-3 font-medium">Confidence</th>
-                  <th className="px-4 py-3 font-medium text-right">Pace est. time</th>
-                  <th className="px-4 py-3 font-medium text-right">Gap</th>
                 </tr>
               </thead>
               <tbody>
-                {prediction.standings.map((row) => (
-                  <tr key={row.driver_number} className="border-b border-white/5">
-                    <td className="px-4 py-3 font-display text-xl text-accent">{row.position}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <span
-                          className="h-8 w-1 rounded-full"
-                          style={{ backgroundColor: row.team_colour ? `#${row.team_colour}` : "#e10600" }}
-                        />
-                        <div>
-                          <div className="font-display text-lg leading-none tracking-wide">
-                            {row.name_acronym}
+                {prediction.standings.map((row) => {
+                  const activeRow = selected?.driver_number === row.driver_number;
+                  return (
+                    <tr
+                      key={row.driver_number}
+                      onClick={() => setSelected(row)}
+                      className={`cursor-pointer border-b border-white/5 transition-colors ${
+                        activeRow ? "bg-accent/15" : "hover:bg-white/5"
+                      }`}
+                    >
+                      <td className="px-4 py-3 font-display text-xl text-accent">{row.position}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <span
+                            className="h-8 w-1 rounded-full"
+                            style={{
+                              backgroundColor: row.team_colour ? `#${row.team_colour}` : "#e10600",
+                            }}
+                          />
+                          <div>
+                            <div className="font-display text-lg leading-none tracking-wide">
+                              {row.name_acronym}
+                            </div>
+                            <div className="text-xs text-muted">{row.full_name}</div>
                           </div>
-                          <div className="text-xs text-muted">{row.full_name}</div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-muted">{row.team_name}</td>
-                    <td className="px-4 py-3">
-                      <div className="h-1.5 w-24 overflow-hidden bg-white/10">
-                        <div
-                          className="h-full bg-accent"
-                          style={{ width: `${Math.round((row.confidence ?? 0) * 100)}%` }}
-                        />
-                      </div>
-                      <span className="mt-1 inline-block font-mono text-[11px] text-fog">
-                        {row.confidence != null ? `${Math.round(row.confidence * 100)}%` : "—"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-fog">
-                      {row.estimated_race_time_s != null ? formatRaceTime(row.estimated_race_time_s) : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-muted">
-                      {row.gap_to_leader_s != null && row.gap_to_leader_s > 0
-                        ? `+${row.gap_to_leader_s.toFixed(1)}s`
-                        : "—"}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-3 text-muted">{row.team_name}</td>
+                      <td className="px-4 py-3">
+                        <div className="h-1.5 w-24 overflow-hidden bg-white/10">
+                          <div
+                            className="h-full bg-accent"
+                            style={{ width: `${Math.round((row.confidence ?? 0) * 100)}%` }}
+                          />
+                        </div>
+                        <span className="mt-1 inline-block font-mono text-[11px] text-fog">
+                          {row.confidence != null ? `${Math.round(row.confidence * 100)}%` : "—"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+
+          {selected && <ClassificationDetail row={selected} />}
         </section>
       )}
     </>
