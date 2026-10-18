@@ -19,8 +19,10 @@ After finishing a coherent piece of work in this repo, **commit without waiting 
 ### Push
 - After creating commits on this project, **push to `origin`** unless the user said not to push.
 
-### Windows / PowerShell
-- HEREDOC may fail in PowerShell; use `git commit -m "subject" -m "body"` instead.
+### Windows / Git Bash
+- **Always run git via Git Bash**, not PowerShell — `git` is often missing from the PowerShell PATH on this machine.
+- Prefer: `"D:\Outils\Git\bin\bash.exe" -lc 'cd /d/Dev/RaceForesight && git …'` (or open a Git Bash shell in the repo root).
+- In Bash, HEREDOC is fine for commit messages; if stuck in PowerShell somehow, use `git commit -m "subject" -m "body"` instead.
 
 ## Product context (short)
 - **Strategy** = per-driver tyre / pit optimisation (race times under a plan).
