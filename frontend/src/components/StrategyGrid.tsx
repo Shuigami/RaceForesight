@@ -13,6 +13,11 @@ type Props = {
 export function StrategyGrid({ drivers, actual = [], selected, onSelect }: Props) {
   const actualByDriver = new Map(actual.map((a) => [a.driver_number, a]));
   const showActual = actual.length > 0;
+  const ordered = [...drivers].sort(
+    (a, b) =>
+      a.team_name.localeCompare(b.team_name) ||
+      a.name_acronym.localeCompare(b.name_acronym),
+  );
 
   return (
     <div className="overflow-x-auto rounded-sm border border-white/10 bg-panel/80 backdrop-blur">
@@ -29,7 +34,7 @@ export function StrategyGrid({ drivers, actual = [], selected, onSelect }: Props
           </tr>
         </thead>
         <tbody>
-          {drivers.map((d, idx) => {
+          {ordered.map((d, idx) => {
             const active = selected === d.driver_number;
             const ran = actualByDriver.get(d.driver_number);
             return (
