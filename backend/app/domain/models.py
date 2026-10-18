@@ -45,7 +45,7 @@ class DriverStrategy(BaseModel):
 class StrategyResponse(BaseModel):
     meeting: MeetingSummary
     drivers: list[DriverStrategy]
-    model_version: str = "xgboost-lap-v1"
+    model_version: str = "xgboost-lap-v2"
     generated_at: str
 
 
@@ -83,7 +83,7 @@ class StrategyDetail(BaseModel):
     stint_curves: list[StintPaceCurve] = Field(default_factory=list)
     # Recommended first, then alternatives — used by interactive detail UI
     options: list[StrategyOption] = Field(default_factory=list)
-    model_version: str = "xgboost-lap-v1"
+    model_version: str = "xgboost-lap-v2"
 
 
 class PredictedFinish(BaseModel):
@@ -102,11 +102,11 @@ class PredictedFinish(BaseModel):
 class ClassificationResponse(BaseModel):
     meeting: MeetingSummary
     standings: list[PredictedFinish]
-    model_version: str = "ranking-pace-v1"
+    model_version: str = "ranking-pairwise-v1"
     generated_at: str
     note: str = (
-        "Finishing order from relative pace (not Strategy tyre optimisation). "
-        "Estimated times are secondary and will differ from Strategy race times."
+        "Finishing order from pairwise ranker (grid + form + pace), "
+        "not Strategy tyre optimisation. Estimated times are secondary."
     )
 
 
