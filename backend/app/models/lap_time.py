@@ -13,6 +13,7 @@ from xgboost import XGBRegressor
 
 from app.config import settings
 from app.features.builder import DRY_COMPOUNDS, FEATURE_COLUMNS, WET_COMPOUNDS, FeatureBuilder
+from app.models.xgb_device import xgb_device
 
 # Sensible COTA dry-race baseline when historical COTA data is sparse
 DEFAULT_CIRCUIT_BASELINES = {
@@ -101,6 +102,7 @@ class LapTimeModel:
         y_test_abs = test_df["lap_duration"].to_numpy(dtype=np.float32)
         baseline_test = test_df["baseline"].to_numpy(dtype=np.float32)
 
+        device = xgb_device()
         self.model = XGBRegressor(
             n_estimators=350,
             max_depth=6,
@@ -109,6 +111,7 @@ class LapTimeModel:
             colsample_bytree=0.85,
             min_child_weight=3,
             objective="reg:squarederror",
+            device=device,
             n_jobs=4,
             random_state=42,
         )
@@ -120,6 +123,7 @@ class LapTimeModel:
         self.meta = {
             "version": self.VERSION,
             "target": "circuit_residual",
+            "device": device,
             "n_train": int(len(train_df)),
             "n_test": int(len(test_df)),
             "mae": mae,

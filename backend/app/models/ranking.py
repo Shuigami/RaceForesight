@@ -11,6 +11,7 @@ import pandas as pd
 from xgboost import XGBRanker
 
 from app.config import settings
+from app.models.xgb_device import xgb_device
 from app.simulation.form import finishing_form, shrunk_pace_offsets, team_form
 
 RANK_FEATURE_COLUMNS = [
@@ -117,6 +118,7 @@ class RankingModel:
         x = data[RANK_FEATURE_COLUMNS].to_numpy(dtype=np.float32)
         y = data["relevance"].to_numpy(dtype=np.float32)
 
+        device = xgb_device()
         self.model = XGBRanker(
             objective="rank:pairwise",
             n_estimators=250,
@@ -125,12 +127,14 @@ class RankingModel:
             subsample=0.9,
             colsample_bytree=0.9,
             min_child_weight=2,
+            device=device,
             n_jobs=4,
             random_state=42,
         )
         self.model.fit(x, y, group=group_sizes)
         self.meta = {
             "version": self.VERSION,
+            "device": device,
             "n_races": len(group_sizes),
             "n_rows": int(len(data)),
             "feature_columns": RANK_FEATURE_COLUMNS,
