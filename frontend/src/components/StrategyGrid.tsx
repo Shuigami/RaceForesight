@@ -1,7 +1,7 @@
 "use client";
 
 import type { ActualDriverStrategy, GlobalStrategy } from "@/lib/api";
-import { formatRaceTime } from "@/lib/api";
+import { formatPitWindows, formatRaceTime } from "@/lib/api";
 import { CompoundPills } from "./CompoundPills";
 
 type Props = {
@@ -35,7 +35,7 @@ export function StrategyGrid({ strategies, actual = [] }: Props) {
             <th className="px-4 py-3 font-medium">Rank</th>
             <th className="px-4 py-3 font-medium">Plan</th>
             <th className="px-4 py-3 font-medium">Compounds</th>
-            <th className="px-4 py-3 font-medium">Pit laps</th>
+            <th className="px-4 py-3 font-medium">Pit window</th>
             <th className="px-4 py-3 font-medium">Pred time</th>
             <th className="px-4 py-3 font-medium">Gap</th>
             {showActual && <th className="px-4 py-3 font-medium">Field</th>}
@@ -47,14 +47,13 @@ export function StrategyGrid({ strategies, actual = [] }: Props) {
             return (
               <tr key={`${s.rank}-${s.strategy_label}`} className="border-b border-white/5">
                 <td className="px-4 py-3 font-mono text-muted">{s.rank}</td>
-                <td className="px-4 py-3">
-                  <span className="font-mono text-xs text-fog">{s.stops}-stop</span>
-                  <span className="ml-2 text-xs text-muted">{s.strategy_label}</span>
-                </td>
+                <td className="px-4 py-3 font-mono text-xs text-fog">{s.stops}-stop</td>
                 <td className="px-4 py-3">
                   <CompoundPills compounds={s.compounds} />
                 </td>
-                <td className="px-4 py-3 font-mono text-fog">{s.pit_laps.join(", ")}</td>
+                <td className="px-4 py-3 font-mono text-fog">
+                  {formatPitWindows(s.pit_windows, s.pit_laps)}
+                </td>
                 <td className="px-4 py-3 font-mono text-white">
                   {formatRaceTime(s.predicted_race_time_s)}
                 </td>

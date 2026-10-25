@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchPredictionCompare,
   fetchSavedPredictions,
+  formatPitWindows,
   formatRaceTime,
   type ActualDriverStrategy,
   type GlobalStrategy,
@@ -369,7 +370,7 @@ export function ResultsDashboard() {
                   <tr>
                     <th className="px-3 py-2">Rank</th>
                     <th className="px-3 py-2">Compounds</th>
-                    <th className="px-3 py-2">Pit laps</th>
+                    <th className="px-3 py-2">Pit window</th>
                     <th className="px-3 py-2">Pred time</th>
                     <th className="px-3 py-2">Gap</th>
                     <th className="px-3 py-2">Field</th>
@@ -388,7 +389,7 @@ export function ResultsDashboard() {
                           <span className="ml-2 text-[11px] text-muted">{row.stops}-stop</span>
                         </td>
                         <td className="px-3 py-2 font-mono text-fog">
-                          {row.pit_laps.join(", ") || "—"}
+                          {formatPitWindows(row.pit_windows, row.pit_laps)}
                         </td>
                         <td className="px-3 py-2 font-mono text-fog">
                           {formatRaceTime(row.predicted_race_time_s)}

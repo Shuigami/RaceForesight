@@ -38,12 +38,20 @@ export type GlobalStrategy = {
   stops: number;
   compounds: string[];
   pit_laps: number[];
+  pit_windows: number[][];
   stints: StintPlan[];
   predicted_race_time_s: number;
   predicted_avg_lap_s: number | null;
   strategy_label: string;
   gap_to_best_s: number;
 };
+
+export function formatPitWindows(windows: number[][] | undefined, fallbackLaps: number[]): string {
+  const src = windows?.length ? windows : fallbackLaps.map((lap) => [lap, lap]);
+  return src
+    .map(([lo, hi]) => (lo === hi ? String(lo) : `${lo}–${hi}`))
+    .join(", ");
+}
 
 export type ActualDriverStrategy = {
   driver_number: number;

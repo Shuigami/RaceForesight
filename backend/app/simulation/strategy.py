@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import datetime, timezone
 from itertools import combinations
 
@@ -24,6 +25,10 @@ from app.models.lap_time import LapTimeModel
 
 DRY_COMPOUNDS = ("SOFT", "MEDIUM", "HARD")
 
+# Collapse nearby pit samples of the same compound plan into one pit window.
+# shortcut: fixed seconds band, retune if windows are too wide/narrow on real races
+_PIT_WINDOW_EPS_S = 2.0
+
 # Pace loss per lap of tyre age (s) — used as the primary wear curve.
 # Soft wears fastest; hard slowest. Tuned as a clear UI/strategy prior, not a lab curve.
 _COMPOUND_WEAR_S_PER_LAP = {
@@ -31,6 +36,17 @@ _COMPOUND_WEAR_S_PER_LAP = {
     "MEDIUM": 0.040,
     "HARD": 0.025,
 }
+
+
+def _shape_key(strat: dict) -> tuple[int, tuple[str, ...]]:
+    return (int(strat["stops"]), tuple(str(c).upper() for c in strat["compounds"]))
+
+
+def _format_pit_windows(windows: list[list[int]]) -> str:
+    parts: list[str] = []
+    for lo, hi in windows:
+        parts.append(f"{lo}-{hi}" if lo != hi else str(lo))
+    return ",".join(parts)
 
 
 def _monotonic_tyre_loss_seconds(raw_effects: list[float], compound: str) -> list[float]:
@@ -392,23 +408,50 @@ class StrategySimulator:
         total_laps: int,
         top_n: int,
     ) -> list[GlobalStrategy]:
-        ranked = sorted(scored, key=lambda x: x[0])[:top_n]
-        if not ranked:
+        """Rank by compound plan; merge pit-lap samples into competitive windows."""
+        if not scored:
             return []
-        best_time = ranked[0][0]
+
+        by_shape: dict[tuple[int, tuple[str, ...]], list[tuple[float, dict, list[StintPlan]]]] = (
+            defaultdict(list)
+        )
+        for item in scored:
+            by_shape[_shape_key(item[1])].append(item)
+
+        collapsed: list[tuple[float, dict, list[StintPlan], list[list[int]], str]] = []
+        for (_stops, _compounds), items in by_shape.items():
+            items_sorted = sorted(items, key=lambda x: x[0])
+            best_time, best_strat, best_stints = items_sorted[0]
+            near = [it for it in items_sorted if it[0] <= best_time + _PIT_WINDOW_EPS_S]
+            n_pits = int(best_strat["stops"])
+            windows: list[list[int]] = []
+            for i in range(n_pits):
+                laps_i = [int(it[1]["pit_laps"][i]) for it in near if len(it[1]["pit_laps"]) > i]
+                windows.append([min(laps_i), max(laps_i)])
+            compounds = list(best_strat["compounds"])
+            label = (
+                f"{n_pits}-stop {'/'.join(c[0] for c in compounds)} "
+                f"@{_format_pit_windows(windows)}"
+            )
+            collapsed.append((best_time, best_strat, best_stints, windows, label))
+
+        collapsed.sort(key=lambda x: x[0])
+        collapsed = collapsed[:top_n]
+        overall_best = collapsed[0][0]
         out: list[GlobalStrategy] = []
-        for i, (race_time, strat, stints) in enumerate(ranked):
+        for i, (race_time, strat, stints, windows, label) in enumerate(collapsed):
             out.append(
                 GlobalStrategy(
                     rank=i + 1,
                     stops=int(strat["stops"]),
                     compounds=list(strat["compounds"]),
                     pit_laps=list(strat["pit_laps"]),
+                    pit_windows=windows,
                     stints=stints,
                     predicted_race_time_s=round(race_time, 3),
                     predicted_avg_lap_s=round(race_time / total_laps, 3) if total_laps else None,
-                    strategy_label=str(strat["label"]),
-                    gap_to_best_s=round(race_time - best_time, 3),
+                    strategy_label=label,
+                    gap_to_best_s=round(race_time - overall_best, 3),
                 )
             )
         return out

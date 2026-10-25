@@ -37,6 +37,27 @@ def test_to_global_strategies_ranks_and_gaps():
     assert len(out) == 4
     assert [s.rank for s in out] == [1, 2, 3, 4]
     assert out[0].gap_to_best_s == 0.0
-    assert out[0].strategy_label == "b"
+    assert out[0].compounds == ["MEDIUM", "HARD"]
     assert out[1].gap_to_best_s == 50.0
     assert out[2].gap_to_best_s == 100.0
+
+
+def test_to_global_strategies_merges_pit_window():
+    sim = StrategySimulator.__new__(StrategySimulator)
+    stints = [
+        StintPlan(compound="SOFT", lap_start=1, lap_end=26),
+        StintPlan(compound="HARD", lap_start=27, lap_end=56),
+    ]
+    scored = [
+        (5000.0, {"stops": 1, "compounds": ["SOFT", "HARD"], "pit_laps": [26], "label": "x"}, stints),
+        (5000.2, {"stops": 1, "compounds": ["SOFT", "HARD"], "pit_laps": [30], "label": "y"}, stints),
+        (5005.0, {"stops": 1, "compounds": ["SOFT", "HARD"], "pit_laps": [14], "label": "z"}, stints),
+        (5100.0, {"stops": 1, "compounds": ["MEDIUM", "HARD"], "pit_laps": [22], "label": "m"}, stints),
+    ]
+    out = StrategySimulator._to_global_strategies(sim, scored, 56, top_n=4)
+    assert len(out) == 2
+    assert out[0].compounds == ["SOFT", "HARD"]
+    assert out[0].pit_windows == [[26, 30]]
+    assert out[0].pit_laps == [26]
+    assert "26-30" in out[0].strategy_label
+    assert out[1].compounds == ["MEDIUM", "HARD"]

@@ -45,12 +45,18 @@ class DriverStrategy(BaseModel):
 
 
 class GlobalStrategy(BaseModel):
-    """Race-level tyre plan — not tied to a driver."""
+    """Race-level tyre plan — not tied to a driver.
+
+    Same stop count + compounds collapse to one entry; pit_windows is the
+    competitive lap range per stop (e.g. [[26, 30]] for a 1-stop S/H).
+    pit_laps is the single fastest sample inside that window.
+    """
 
     rank: int
     stops: int
     compounds: list[str]
     pit_laps: list[int]
+    pit_windows: list[list[int]] = Field(default_factory=list)
     stints: list[StintPlan]
     predicted_race_time_s: float
     predicted_avg_lap_s: float | None = None
