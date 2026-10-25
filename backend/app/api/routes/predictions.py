@@ -37,25 +37,28 @@ def _resolve_key(meeting_key: int) -> int:
     return meeting_key
 
 
-def _load_actuals(meeting_key: int):
+def _finishing_results(meeting_key: int) -> tuple[dict[int, int], dict[int, float]]:
     pipeline = _pipeline()
     session_key = pipeline.race_session_key(meeting_key)
-    positions: dict[int, int] = {}
-    durations: dict[int, float] = {}
-    if session_key:
-        try:
-            result = pipeline.client.session_result(session_key)
-            positions, durations = parse_actual_results(result)
-        except Exception:
-            positions, durations = {}, {}
-    # Need a real finishing order — empty / tiny = not raced yet
-    has_actual = len(positions) >= 8
-    if not has_actual:
-        positions, durations = {}, {}
+    if not session_key:
+        return {}, {}
+    try:
+        result = pipeline.client.session_result(session_key)
+        positions, durations = parse_actual_results(result)
+    except Exception:
+        return {}, {}
+    if len(positions) < 8:
+        return {}, {}
+    return positions, durations
+
+
+def _load_actuals(meeting_key: int):
+    positions, durations = _finishing_results(meeting_key)
+    has_actual = bool(positions)
     actual_strategies = []
     if has_actual:
         try:
-            actual_strategies = pipeline.actual_strategies_for_meeting(meeting_key)
+            actual_strategies = _pipeline().actual_strategies_for_meeting(meeting_key)
         except Exception:
             actual_strategies = []
     return has_actual, positions, durations, actual_strategies
@@ -63,7 +66,7 @@ def _load_actuals(meeting_key: int):
 
 def _enrich_list_item(raw: dict) -> PredictionListItem:
     mk = int(raw["meeting_key"])
-    has_actual, _, _, _ = _load_actuals(mk)
+    has_actual = bool(_finishing_results(mk)[0])
     lock = compute_lock_status(
         first_saved_at=raw.get("first_saved_at"),
         saved_at=raw.get("saved_at"),

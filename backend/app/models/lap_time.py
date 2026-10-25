@@ -13,7 +13,7 @@ from xgboost import XGBRegressor
 
 from app.config import settings
 from app.features.builder import DRY_COMPOUNDS, FEATURE_COLUMNS, WET_COMPOUNDS, FeatureBuilder
-from app.models.xgb_device import xgb_device
+from app.models.xgb_device import force_xgb_cpu, xgb_device
 
 # Sensible COTA dry-race baseline when historical COTA data is sparse
 DEFAULT_CIRCUIT_BASELINES = {
@@ -149,7 +149,7 @@ class LapTimeModel:
         model_path = self.artifact_dir / self.MODEL_FILE
         if not model_path.exists():
             raise FileNotFoundError(f"Model not found at {model_path}. Run scripts/train_model.py first.")
-        self.model = joblib.load(model_path)
+        self.model = force_xgb_cpu(joblib.load(model_path))
         self.features.load()
         meta_path = self.artifact_dir / self.META_FILE
         if meta_path.exists():

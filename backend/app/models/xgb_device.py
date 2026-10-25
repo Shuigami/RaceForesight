@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Any
 
 
 @lru_cache(maxsize=1)
@@ -21,3 +22,19 @@ def xgb_device() -> str:
         return "cuda"
     except Exception:
         return "cpu"
+
+
+def force_xgb_cpu(model: Any) -> Any:
+    """Serve on CPU — CUDA boosters + numpy features crash the uvicorn worker on Windows."""
+    if model is None:
+        return model
+    try:
+        model.set_params(device="cpu")
+    except Exception:
+        pass
+    try:
+        booster = model.get_booster()
+        booster.set_param({"device": "cpu"})
+    except Exception:
+        pass
+    return model

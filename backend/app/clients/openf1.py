@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,7 @@ class OpenF1Client:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._min_interval = 1.0 / (max_rps or settings.openf1_max_rps)
         self._last_request = 0.0
+        self._lock = threading.Lock()
         self._client = httpx.Client(timeout=60.0)
 
     def close(self) -> None:
@@ -51,7 +53,7 @@ class OpenF1Client:
         safe_endpoint = endpoint.strip("/").replace("/", "_") or "root"
         return self.cache_dir / f"{safe_endpoint}_{key}.json"
 
-    def _throttle(self) -> None:
+    def _throttle_unlocked(self) -> None:
         elapsed = time.monotonic() - self._last_request
         if elapsed < self._min_interval:
             time.sleep(self._min_interval - elapsed)
@@ -69,20 +71,24 @@ class OpenF1Client:
         if use_cache and cache_path.exists():
             return json.loads(cache_path.read_text(encoding="utf-8"))
 
-        self._throttle()
-        url = f"{self.base_url}/{endpoint.lstrip('/')}"
-        response = self._client.get(url, params=params)
-        if response.status_code == 429:
-            # Back off harder than the steady-state throttle
-            time.sleep(5)
-            raise RateLimitError(f"OpenF1 rate limited on {endpoint}")
-        response.raise_for_status()
-        data = response.json()
-        if not isinstance(data, list):
-            data = [data]
-        if use_cache:
-            cache_path.write_text(json.dumps(data), encoding="utf-8")
-        return data
+        # httpx.Client + throttle are shared across uvicorn threadpool workers
+        with self._lock:
+            if use_cache and cache_path.exists():
+                return json.loads(cache_path.read_text(encoding="utf-8"))
+            self._throttle_unlocked()
+            url = f"{self.base_url}/{endpoint.lstrip('/')}"
+            response = self._client.get(url, params=params)
+            if response.status_code == 429:
+                # Back off harder than the steady-state throttle
+                time.sleep(5)
+                raise RateLimitError(f"OpenF1 rate limited on {endpoint}")
+            response.raise_for_status()
+            data = response.json()
+            if not isinstance(data, list):
+                data = [data]
+            if use_cache:
+                cache_path.write_text(json.dumps(data), encoding="utf-8")
+            return data
 
     def get_df(self, endpoint: str, params: dict[str, Any] | None = None, *, use_cache: bool = True) -> pd.DataFrame:
         rows = self.get(endpoint, params, use_cache=use_cache)

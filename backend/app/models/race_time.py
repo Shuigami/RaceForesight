@@ -15,7 +15,7 @@ from app.config import settings
 from app.domain.circuit_laps import resolve_race_laps
 from app.models.lap_time import LapTimeModel
 from app.models.ranking import RANK_FEATURE_COLUMNS, RankingModel
-from app.models.xgb_device import xgb_device
+from app.models.xgb_device import force_xgb_cpu, xgb_device
 
 RACE_TIME_FEATURE_COLUMNS = [
     *RANK_FEATURE_COLUMNS,
@@ -191,7 +191,7 @@ class RaceTimeModel:
         path = self.artifact_dir / self.MODEL_FILE
         if not path.exists():
             raise FileNotFoundError(f"Race-time model not found at {path}")
-        self.model = joblib.load(path)
+        self.model = force_xgb_cpu(joblib.load(path))
         meta_path = self.artifact_dir / self.META_FILE
         if meta_path.exists():
             self.meta = json.loads(meta_path.read_text(encoding="utf-8"))
