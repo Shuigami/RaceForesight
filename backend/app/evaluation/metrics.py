@@ -49,6 +49,26 @@ class ModelEvaluator:
     def save(self, response: ModelsMetricsResponse) -> None:
         self.metrics_path().write_text(response.model_dump_json(indent=2), encoding="utf-8")
 
+    @staticmethod
+    def merge_scores(
+        existing: list[ModelScore],
+        fresh: list[ModelScore],
+    ) -> list[ModelScore]:
+        """Upsert by (name, version); keep older versions for the Models UI picker."""
+        by_key: dict[tuple[str, str], ModelScore] = {(m.name, m.version): m for m in existing}
+        for m in fresh:
+            by_key[(m.name, m.version)] = m
+        merged = list(by_key.values())
+        # If fresh brings a new primary for a kind, demote every other entry of that kind.
+        for kind in {m.kind for m in fresh}:
+            keep = {(m.name, m.version) for m in fresh if m.kind == kind and m.primary}
+            if not keep:
+                continue
+            for m in merged:
+                if m.kind == kind:
+                    m.primary = (m.name, m.version) in keep
+        return sorted(merged, key=lambda m: (m.kind, m.name, m.version))
+
     def evaluate(
         self,
         *,
@@ -71,9 +91,14 @@ class ModelEvaluator:
         race_time_score, rt_notes = self._score_race_time_loo(years=years, max_races=ranking_races)
         notes.extend(rt_notes)
 
+        previous = self.load()
+        merged = self.merge_scores(
+            previous.models if previous else [],
+            [xgb_score, rf_score, ranking_score, race_time_score],
+        )
         response = ModelsMetricsResponse(
             generated_at=datetime.now(timezone.utc).isoformat(),
-            models=[xgb_score, rf_score, ranking_score, race_time_score],
+            models=merged,
             evaluation_races=n_races,
             notes=notes,
         )

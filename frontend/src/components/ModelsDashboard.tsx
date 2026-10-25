@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchModelMetrics,
   runModelEvaluation,
@@ -9,6 +9,20 @@ import {
 } from "@/lib/api";
 import { METRIC_GLOSSARY, metricInfo } from "@/lib/metricGlossary";
 import { ExplainPanel } from "./ExplainPanel";
+
+const SECTION_ORDER = ["lap_time", "classification", "race_time"] as const;
+
+const SECTION_LABELS: Record<(typeof SECTION_ORDER)[number], string> = {
+  lap_time: "Lap time",
+  classification: "Classification",
+  race_time: "Race time",
+};
+
+const SECTION_BLURBS: Record<(typeof SECTION_ORDER)[number], string> = {
+  lap_time: "Regressors used by tyre strategy (primary) and a Random Forest benchmark.",
+  classification: "Finishing-order ranker scored leave-one-race-out vs OpenF1 results.",
+  race_time: "Total race duration per driver (not Strategy tyre times).",
+};
 
 function metricEntries(model: ModelScore) {
   return Object.entries(model.metrics).filter(([, v]) => v !== null && v !== undefined);
@@ -25,6 +39,156 @@ function formatMetric(key: string, value: number | string | null) {
   }
   if (Number.isInteger(value)) return String(value);
   return value.toFixed(3);
+}
+
+/** Prefer trailing …-vN, else lexicographic. */
+function versionRank(version: string): number {
+  const m = version.match(/v(\d+)\s*$/i);
+  return m ? Number(m[1]) : 0;
+}
+
+function sortVersionsDesc(versions: string[]): string[] {
+  return [...versions].sort((a, b) => {
+    const dr = versionRank(b) - versionRank(a);
+    if (dr !== 0) return dr;
+    return b.localeCompare(a);
+  });
+}
+
+function defaultSelection(models: ModelScore[]): { name: string; version: string } | null {
+  if (models.length === 0) return null;
+  const primary = models.find((m) => m.primary) ?? models[0];
+  const sameName = models.filter((m) => m.name === primary.name);
+  const versions = sortVersionsDesc(sameName.map((m) => m.version));
+  return { name: primary.name, version: versions[0] };
+}
+
+function ModelSection({
+  kind,
+  models,
+}: {
+  kind: (typeof SECTION_ORDER)[number];
+  models: ModelScore[];
+}) {
+  const modelNames = useMemo(() => {
+    const names = [...new Set(models.map((m) => m.name))];
+    // Primary family's name first, then alpha
+    const primaryName = models.find((m) => m.primary)?.name;
+    return names.sort((a, b) => {
+      if (a === primaryName) return -1;
+      if (b === primaryName) return 1;
+      return a.localeCompare(b);
+    });
+  }, [models]);
+
+  const initial = useMemo(() => defaultSelection(models), [models]);
+  const [name, setName] = useState(initial?.name ?? "");
+  const [version, setVersion] = useState(initial?.version ?? "");
+
+  // Reset when artifact reloads (new evaluate / first load)
+  useEffect(() => {
+    const next = defaultSelection(models);
+    setName(next?.name ?? "");
+    setVersion(next?.version ?? "");
+  }, [models]);
+
+  const versionsForName = useMemo(() => {
+    return sortVersionsDesc(models.filter((m) => m.name === name).map((m) => m.version));
+  }, [models, name]);
+
+  useEffect(() => {
+    if (versionsForName.length === 0) return;
+    if (!versionsForName.includes(version)) {
+      setVersion(versionsForName[0]);
+    }
+  }, [versionsForName, version]);
+
+  const selected =
+    models.find((m) => m.name === name && m.version === version) ??
+    models.find((m) => m.name === name) ??
+    null;
+
+  const onModelChange = (nextName: string) => {
+    setName(nextName);
+    const vers = sortVersionsDesc(models.filter((m) => m.name === nextName).map((m) => m.version));
+    setVersion(vers[0] ?? "");
+  };
+
+  return (
+    <article className="border border-white/10 bg-panel/80 p-5 backdrop-blur">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.14em] text-muted">{kind}</p>
+          <h2 className="font-display text-2xl tracking-wide text-white">{SECTION_LABELS[kind]}</h2>
+          <p className="mt-1 max-w-xl text-xs leading-relaxed text-fog">{SECTION_BLURBS[kind]}</p>
+        </div>
+        {selected?.primary && (
+          <span className="border border-accent/40 bg-accent/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-accent">
+            Primary
+          </span>
+        )}
+      </div>
+
+      <div className="mb-5 grid gap-3 sm:grid-cols-2">
+        <label className="block space-y-1.5">
+          <span className="text-[11px] uppercase tracking-[0.14em] text-muted">Model</span>
+          <select
+            className="w-full border border-white/15 bg-ink-850 px-3 py-2.5 text-sm text-white outline-none focus:border-accent"
+            value={name}
+            onChange={(e) => onModelChange(e.target.value)}
+            disabled={modelNames.length === 0}
+          >
+            {modelNames.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block space-y-1.5">
+          <span className="text-[11px] uppercase tracking-[0.14em] text-muted">Version</span>
+          <select
+            className="w-full border border-white/15 bg-ink-850 px-3 py-2.5 font-mono text-sm text-white outline-none focus:border-accent"
+            value={version}
+            onChange={(e) => setVersion(e.target.value)}
+            disabled={versionsForName.length === 0}
+          >
+            {versionsForName.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {!selected ? (
+        <p className="text-sm text-muted">No scores for this selection.</p>
+      ) : (
+        <>
+          <p className="mb-4 text-xs leading-relaxed text-fog">{selected.description}</p>
+          <dl className="space-y-2">
+            {metricEntries(selected).map(([key, value]) => {
+              const info = metricInfo(key);
+              return (
+                <div
+                  key={key}
+                  className="border-t border-white/5 pt-2"
+                  title={`${info.short}. ${info.detail}`}
+                >
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-[11px] uppercase tracking-[0.12em] text-muted">{info.label}</dt>
+                    <dd className="font-mono text-sm text-white">{formatMetric(key, value)}</dd>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-snug text-fog/90">{info.short}</p>
+                </div>
+              );
+            })}
+          </dl>
+        </>
+      )}
+    </article>
+  );
 }
 
 export function ModelsDashboard() {
@@ -62,6 +226,14 @@ export function ModelsDashboard() {
     }
   };
 
+  const byKind = useMemo(() => {
+    const map: Record<string, ModelScore[]> = {};
+    for (const m of data?.models ?? []) {
+      (map[m.kind] ??= []).push(m);
+    }
+    return map;
+  }, [data]);
+
   return (
     <main className="relative mx-auto flex w-full max-w-6xl flex-col gap-8 px-5 pb-16 pt-10 md:px-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -71,8 +243,8 @@ export function ModelsDashboard() {
             Accuracy & scores
           </h1>
           <p className="max-w-2xl text-fog">
-            Compare lap-time regressors and the classification backtest. XGBoost powers live strategy;
-            Random Forest is a benchmark on the same split.
+            Pick a model and version in each section. Defaults to the primary (live) model at its
+            latest version. Re-run evaluation merges new scores without wiping older versions.
           </p>
         </div>
         <button
@@ -123,50 +295,13 @@ export function ModelsDashboard() {
             <span>Generated {new Date(data.generated_at).toLocaleString()}</span>
             <span>·</span>
             <span>{data.evaluation_races} ranking races backtested</span>
+            <span>·</span>
+            <span>{data.models.length} score entries</span>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
-            {data.models.map((model) => (
-              <article
-                key={`${model.kind}-${model.version}`}
-                className={`border bg-panel/80 p-5 backdrop-blur ${
-                  model.primary ? "border-accent/50" : "border-white/10"
-                }`}
-              >
-                <div className="mb-3 flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-[11px] uppercase tracking-[0.14em] text-muted">{model.kind}</p>
-                    <h2 className="font-display text-2xl tracking-wide text-white">{model.name}</h2>
-                  </div>
-                  {model.primary && (
-                    <span className="border border-accent/40 bg-accent/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-accent">
-                      Primary
-                    </span>
-                  )}
-                </div>
-                <p className="mb-4 text-xs leading-relaxed text-fog">{model.description}</p>
-                <p className="mb-3 font-mono text-[11px] text-muted">{model.version}</p>
-                <dl className="space-y-2">
-                  {metricEntries(model).map(([key, value]) => {
-                    const info = metricInfo(key);
-                    return (
-                      <div
-                        key={key}
-                        className="border-t border-white/5 pt-2"
-                        title={`${info.short}. ${info.detail}`}
-                      >
-                        <div className="flex items-baseline justify-between gap-3">
-                          <dt className="text-[11px] uppercase tracking-[0.12em] text-muted">
-                            {info.label}
-                          </dt>
-                          <dd className="font-mono text-sm text-white">{formatMetric(key, value)}</dd>
-                        </div>
-                        <p className="mt-1 text-[11px] leading-snug text-fog/90">{info.short}</p>
-                      </div>
-                    );
-                  })}
-                </dl>
-              </article>
+          <div className="grid gap-4">
+            {SECTION_ORDER.map((kind) => (
+              <ModelSection key={kind} kind={kind} models={byKind[kind] ?? []} />
             ))}
           </div>
 

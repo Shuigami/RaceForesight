@@ -101,6 +101,19 @@ export const METRIC_GLOSSARY: Record<string, MetricInfo> = {
       "On average, how many places off is each driver’s predicted finishing position vs reality.",
     goodWhen: "Lower is better. ~4–5 places is typical without quali/traffic modelling.",
   },
+  within_race_mae_s: {
+    label: "Within-race MAE (s)",
+    short: "Relative gap error inside a race",
+    detail:
+      "Mean absolute error after removing each race’s average duration — how well we rank/separate drivers when Safety Cars dominate absolute wall-clock time.",
+    goodWhen: "Lower is better. Under ~20s is a strong relative signal.",
+  },
+  best_iteration: {
+    label: "Best iteration",
+    short: "Trees kept by early stopping",
+    detail: "Boosting round chosen on the inner validation split before performance stopped improving.",
+    goodWhen: "Informative only — not a quality score by itself.",
+  },
 };
 
 export function metricInfo(key: string): MetricInfo {

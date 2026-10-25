@@ -4,6 +4,20 @@
     {
       "name": "Lap-time XGBoost",
       "kind": "lap_time",
+      "version": "xgboost-lap-v2",
+      "primary": false,
+      "metrics": {
+        "mae_s": 1.6696,
+        "rmse_s": 2.0947,
+        "n_train": 60718,
+        "n_test": 15180,
+        "target": "circuit_residual"
+      },
+      "description": "Previous lap-time XGBoost (depth 6, 350 trees, no early stopping)."
+    },
+    {
+      "name": "Lap-time XGBoost",
+      "kind": "lap_time",
       "version": "xgboost-lap-v3",
       "primary": true,
       "metrics": {
@@ -34,6 +48,21 @@
     {
       "name": "Classification (pairwise ranker)",
       "kind": "classification",
+      "version": "ranking-pairwise-v1",
+      "primary": false,
+      "metrics": {
+        "races_evaluated": 8,
+        "eval_protocol": "leave_one_race_out",
+        "spearman": 0.8154,
+        "kendall_tau": 0.6604,
+        "top3_hit_rate": 0.6667,
+        "mae_position": 2.2554
+      },
+      "description": "Previous pairwise ranker (depth 5, 250 trees)."
+    },
+    {
+      "name": "Classification (pairwise ranker)",
+      "kind": "classification",
       "version": "ranking-pairwise-v2",
       "primary": true,
       "metrics": {
@@ -45,6 +74,22 @@
         "mae_position": 1.9233
       },
       "description": "Leave-one-race-out backtest of pairwise XGBRanker vs OpenF1 session_result. Features: qualifying grid, recent/circuit form, shrunk pace, team form, rain. Tuned shallow pairwise (depth 3)."
+    },
+    {
+      "name": "Race time (XGBoost)",
+      "kind": "race_time",
+      "version": "race-time-xgb-v1",
+      "primary": false,
+      "metrics": {
+        "mae_s": 540.8912,
+        "rmse_s": 909.0805,
+        "n_train": 389,
+        "n_test": 98,
+        "n_races": 35,
+        "target": "race_duration_s",
+        "eval_protocol": "temporal_holdout"
+      },
+      "description": "Previous absolute-duration regressor (no circuit prior / within-race gaps)."
     },
     {
       "name": "Race time (XGBoost)",
@@ -70,6 +115,7 @@
     "Lap-time v3: shallow trees + early stopping (MAE 1.31s vs 1.67s).",
     "Ranker v2 LOO (8 races): spearman=0.859 kendall=0.72 top3=0.79 mae_pos=1.92.",
     "Race-time v2: absolute MAE ~585s is SC-limited; within-race MAE ~14.7s is the useful signal.",
-    "Some 2026 session_result calls return 401 from OpenF1 — those races skipped."
+    "Some 2026 session_result calls return 401 from OpenF1 — those races skipped.",
+    "Models page: pick model + version per section; evaluate merges new scores without dropping older versions."
   ]
 }
