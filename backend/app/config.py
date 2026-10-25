@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ROOT_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT_DIR / "data"
 CACHE_DIR = DATA_DIR / "cache"
+PREDICTIONS_DIR = DATA_DIR / "predictions"
 MODEL_DIR = Path(__file__).resolve().parent / "models" / "artifacts"
 
 
@@ -19,6 +20,7 @@ class Settings(BaseSettings):
     default_country: str = "United States"
     cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
     cache_dir: Path = CACHE_DIR
+    predictions_dir: Path = PREDICTIONS_DIR
     model_dir: Path = MODEL_DIR
     race_laps_cota: int = 56
     pit_loss_extra_seconds: float = 18.0
@@ -26,4 +28,5 @@ class Settings(BaseSettings):
 
 settings = Settings()
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
+PREDICTIONS_DIR.mkdir(parents=True, exist_ok=True)
 MODEL_DIR.mkdir(parents=True, exist_ok=True)

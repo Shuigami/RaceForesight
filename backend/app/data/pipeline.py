@@ -157,7 +157,7 @@ class RaceDataPipeline:
                 return m
         raise ValueError(f"Meeting {meeting_key} not found")
 
-    def race_session_key(self, meeting_key: int) -> int | None:
+    def _race_session_row(self, meeting_key: int):
         sessions = self.client.sessions(meeting_key=meeting_key)
         if sessions.empty:
             return None
@@ -166,7 +166,24 @@ class RaceDataPipeline:
             race = sessions[sessions["session_type"].astype(str).str.lower().eq("race")]
         if race.empty:
             return None
-        return int(race.iloc[0]["session_key"])
+        return race.iloc[0]
+
+    def race_session_key(self, meeting_key: int) -> int | None:
+        row = self._race_session_row(meeting_key)
+        if row is None:
+            return None
+        return int(row["session_key"])
+
+    def race_start_at(self, meeting_key: int) -> str | None:
+        """Race session date_start (ISO), else meeting date_start."""
+        row = self._race_session_row(meeting_key)
+        if row is not None and row.get("date_start") is not None:
+            return str(row["date_start"])
+        try:
+            meeting = self.get_meeting(meeting_key)
+        except ValueError:
+            return None
+        return meeting.date_start
 
     def list_race_sessions(self, years: list[int] | None = None) -> pd.DataFrame:
         years = years or list(range(2023, settings.default_season + 1))

@@ -6,6 +6,7 @@ import {
   fetchDriverStrategy,
   fetchRaces,
   fetchStrategy,
+  savePredictions,
   type MeetingSummary,
   type StrategyDetail,
   type StrategyResponse,
@@ -39,6 +40,8 @@ export function RaceForesightApp() {
   const [loadingRaces, setLoadingRaces] = useState(true);
   const [loadingStrategy, setLoadingStrategy] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const setView = (next: RaceView) => {
@@ -117,6 +120,24 @@ export function RaceForesightApp() {
     }
   };
 
+  const onSaveResults = async () => {
+    if (meetingKey == null) return;
+    setSaving(true);
+    setSaveMsg(null);
+    setError(null);
+    try {
+      const data = await savePredictions(meetingKey);
+      const snap = data.snapshot;
+      const overwritten = snap.first_saved_at !== snap.saved_at;
+      const when = new Date(snap.saved_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      setSaveMsg(overwritten ? `Overwritten · ${when}` : `Saved · ${when}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const selectedMeeting = useMemo(
     () => races.find((r) => r.meeting_key === meetingKey) ?? strategy?.meeting ?? null,
     [races, meetingKey, strategy],
@@ -163,7 +184,10 @@ export function RaceForesightApp() {
               className="border border-white/15 bg-ink-850 px-3 py-2.5 text-sm text-white outline-none focus:border-accent"
               disabled={loadingRaces || races.length === 0}
               value={meetingKey ?? ""}
-              onChange={(e) => setMeetingKey(Number(e.target.value))}
+              onChange={(e) => {
+                setMeetingKey(Number(e.target.value));
+                setSaveMsg(null);
+              }}
             >
               {races.map((race) => (
                 <option key={race.meeting_key} value={race.meeting_key}>
@@ -179,6 +203,15 @@ export function RaceForesightApp() {
               {selectedMeeting.race_laps} laps
             </div>
           )}
+          <button
+            type="button"
+            disabled={meetingKey == null || saving}
+            onClick={() => void onSaveResults()}
+            className="border border-accent bg-accent/20 px-4 py-2.5 text-[11px] uppercase tracking-[0.16em] text-white transition-colors hover:bg-accent/30 disabled:opacity-40"
+          >
+            {saving ? "Saving…" : "Save results"}
+          </button>
+          {saveMsg && <p className="pb-1 text-sm text-fog">{saveMsg}</p>}
         </div>
 
         <div className="flex gap-1 border-b border-white/10" role="tablist" aria-label="Race views">
@@ -212,7 +245,7 @@ export function RaceForesightApp() {
         </div>
       </header>
 
-      {error && view === "strategy" && (
+      {error && (
         <div className="border border-accent/40 bg-accent/10 px-4 py-3 text-sm text-white">{error}</div>
       )}
 

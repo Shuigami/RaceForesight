@@ -17,6 +17,8 @@ htmlcov/
 # Data & models (heavy / regenerable)
 data/cache/
 data/raw/
+data/predictions/*.json
+!data/predictions/.gitkeep
 *.parquet
 *.ubj
 *.joblib

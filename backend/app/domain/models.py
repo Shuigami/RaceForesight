@@ -137,3 +137,64 @@ class ModelsMetricsResponse(BaseModel):
     models: list[ModelScore]
     evaluation_races: int = 0
     notes: list[str] = Field(default_factory=list)
+
+
+class PredictionModelVersions(BaseModel):
+    classification: str
+    race_time: str
+    strategy: str
+
+
+class SavedClassificationSlice(BaseModel):
+    standings: list[PredictedFinish]
+    note: str = ""
+
+
+class SavedStrategySlice(BaseModel):
+    drivers: list[DriverStrategy]
+
+
+class PredictionSnapshot(BaseModel):
+    meeting: MeetingSummary
+    race_start_at: str | None = None
+    first_saved_at: str
+    saved_at: str
+    model_versions: PredictionModelVersions
+    classification: SavedClassificationSlice
+    race_time: SavedClassificationSlice
+    strategy: SavedStrategySlice
+
+
+class PredictionListItem(BaseModel):
+    meeting_key: int
+    meeting_name: str
+    year: int | None = None
+    circuit_short_name: str | None = None
+    first_saved_at: str | None = None
+    saved_at: str | None = None
+    race_start_at: str | None = None
+    has_actual: bool = False
+    lock_status: str
+    status: str  # awaiting_race | scored
+
+
+class ActualFinishRow(BaseModel):
+    position: int
+    driver_number: int
+    duration_s: float | None = None
+
+
+class PredictionCompareMetrics(BaseModel):
+    classification: dict[str, float | int | None] = Field(default_factory=dict)
+    race_time: dict[str, float | int | None] = Field(default_factory=dict)
+    strategy: dict[str, float | int | None] = Field(default_factory=dict)
+
+
+class PredictionCompareResponse(BaseModel):
+    snapshot: PredictionSnapshot
+    lock_status: str
+    status: str
+    overwritten: bool = False
+    actual_finishes: list[ActualFinishRow] = Field(default_factory=list)
+    actual_strategies: list[ActualDriverStrategy] = Field(default_factory=list)
+    metrics: PredictionCompareMetrics | None = None

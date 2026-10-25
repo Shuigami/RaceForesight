@@ -171,6 +171,72 @@ export function runModelEvaluation() {
   );
 }
 
+export type LockStatus =
+  | "locked_before_start"
+  | "overwritten_after_start"
+  | "saved_after_start"
+  | "awaiting_race_start";
+
+export type PredictionListItem = {
+  meeting_key: number;
+  meeting_name: string;
+  year: number | null;
+  circuit_short_name: string | null;
+  first_saved_at: string | null;
+  saved_at: string | null;
+  race_start_at: string | null;
+  has_actual: boolean;
+  lock_status: LockStatus;
+  status: "awaiting_race" | "scored";
+};
+
+export type PredictionSnapshot = {
+  meeting: MeetingSummary;
+  race_start_at: string | null;
+  first_saved_at: string;
+  saved_at: string;
+  model_versions: {
+    classification: string;
+    race_time: string;
+    strategy: string;
+  };
+  classification: { standings: PredictedFinish[]; note: string };
+  race_time: { standings: PredictedFinish[]; note: string };
+  strategy: { drivers: DriverStrategy[] };
+};
+
+export type ActualFinishRow = {
+  position: number;
+  driver_number: number;
+  duration_s: number | null;
+};
+
+export type PredictionCompareResponse = {
+  snapshot: PredictionSnapshot;
+  lock_status: LockStatus;
+  status: "awaiting_race" | "scored";
+  overwritten: boolean;
+  actual_finishes: ActualFinishRow[];
+  actual_strategies: ActualDriverStrategy[];
+  metrics: {
+    classification: Record<string, number | null>;
+    race_time: Record<string, number | null>;
+    strategy: Record<string, number | null>;
+  } | null;
+};
+
+export function fetchSavedPredictions() {
+  return getJson<PredictionListItem[]>("/api/predictions");
+}
+
+export function savePredictions(meetingKey: number) {
+  return postJson<PredictionCompareResponse>(`/api/predictions/${meetingKey}/save`);
+}
+
+export function fetchPredictionCompare(meetingKey: number) {
+  return getJson<PredictionCompareResponse>(`/api/predictions/${meetingKey}/compare`);
+}
+
 export function formatRaceTime(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
