@@ -5,11 +5,13 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   fetchRaces,
   fetchStrategy,
+  mediaUrl,
   savePredictions,
   type MeetingSummary,
   type StrategyResponse,
 } from "@/lib/api";
 import { ClassificationBoard } from "./ClassificationBoard";
+import { CircuitThumb } from "./CircuitThumb";
 import { ExplainPanel } from "./ExplainPanel";
 import { RaceTimeBoard } from "./RaceTimeBoard";
 import { StrategyGrid } from "./StrategyGrid";
@@ -134,6 +136,50 @@ export function RaceForesightApp() {
           Three views for the same Grand Prix — finishing order, race times, then tyre plans.
         </p>
 
+        {selectedMeeting && (
+          <div
+            key={selectedMeeting.meeting_key}
+            className="rf-fade-in relative isolate overflow-hidden border-y border-accent/40 bg-ink-850"
+            style={{ clipPath: "polygon(0 0, 100% 0, 100% 88%, 97% 100%, 0 100%)" }}
+          >
+            <div className="pointer-events-none absolute left-0 top-0 h-full w-1.5 bg-accent" aria-hidden />
+            {mediaUrl(selectedMeeting.circuit_image) && (
+              <div className="pointer-events-none absolute inset-y-0 right-0 w-[55%] opacity-40 md:opacity-50">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={mediaUrl(selectedMeeting.circuit_image)!}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-contain object-right pr-2 brightness-0 invert md:pr-6"
+                />
+                <div className="absolute inset-0 bg-gradient-to-r from-ink-850 via-ink-850/80 to-transparent" />
+              </div>
+            )}
+            <div className="relative flex flex-wrap items-center gap-4 px-5 py-6 md:px-7">
+              <CircuitThumb
+                label={selectedMeeting.circuit_short_name || selectedMeeting.meeting_name}
+                circuitImage={selectedMeeting.circuit_image}
+                countryFlag={selectedMeeting.country_flag}
+                size={80}
+              />
+              <div className="min-w-0 space-y-1.5">
+                <p className="text-[10px] uppercase tracking-[0.28em] text-accent">
+                  {selectedMeeting.country_name || "Grand Prix"}
+                </p>
+                <p className="font-display text-3xl tracking-wide text-white md:text-4xl">
+                  {selectedMeeting.meeting_name}
+                </p>
+                <p className="font-mono text-xs text-fog">
+                  {selectedMeeting.year}
+                  {"  ·  "}
+                  {selectedMeeting.circuit_short_name || "—"}
+                  {"  ·  "}
+                  {selectedMeeting.race_laps} LAPS
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <ExplainPanel title="Three views, one race">
           <p>
             <strong className="text-white">Classification</strong> ranks who finishes where from relative
@@ -170,12 +216,6 @@ export function RaceForesightApp() {
               ))}
             </select>
           </label>
-          {selectedMeeting && (
-            <div className="pb-1 text-sm text-muted">
-              {selectedMeeting.circuit_short_name || selectedMeeting.country_name} ·{" "}
-              {selectedMeeting.race_laps} laps
-            </div>
-          )}
           <button
             type="button"
             disabled={meetingKey == null || saving}

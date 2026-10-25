@@ -8,6 +8,7 @@ import {
   type PredictedFinish,
 } from "@/lib/api";
 import { ClassificationDetail } from "./ClassificationDetail";
+import { DriverAvatar } from "./DriverAvatar";
 
 type Props = {
   meetingKey: number | null;
@@ -83,10 +84,10 @@ export function RaceTimeBoard({ meetingKey, active }: Props) {
             <p className="text-xs text-muted">{prediction.model_version}</p>
           </div>
           <p className="text-xs text-fog">{prediction.note}</p>
-          <div className="overflow-x-auto rounded-sm border border-white/10 bg-panel/80 backdrop-blur">
-            <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+          <div className="rf-table-wrap border border-white/10 bg-panel/90">
+            <table className="min-w-[640px] text-left text-sm">
               <thead>
-                <tr className="border-b border-white/10 text-[11px] uppercase tracking-[0.14em] text-muted">
+                <tr className="border-b border-white/10 bg-ink-850/80 text-[11px] uppercase tracking-[0.14em] text-muted">
                   <th className="px-4 py-3 font-medium">Pos</th>
                   <th className="px-4 py-3 font-medium">Driver</th>
                   <th className="px-4 py-3 font-medium">Team</th>
@@ -103,25 +104,22 @@ export function RaceTimeBoard({ meetingKey, active }: Props) {
                     <tr
                       key={row.driver_number}
                       onClick={() => setSelected(row)}
-                      className={`cursor-pointer border-b border-white/5 transition-colors ${
-                        activeRow ? "bg-accent/15" : "hover:bg-white/5"
+                      className={`rf-row-hover cursor-pointer border-b border-white/5 ${
+                        activeRow ? "bg-accent/15" : "hover:bg-white/[0.04]"
                       }`}
                     >
-                      <td className="px-4 py-3 font-display text-xl text-accent">{idx + 1}</td>
+                      <td className="rf-pos px-4 py-3 font-display text-xl text-accent">
+                        {String(idx + 1).padStart(2, "0")}
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <span
-                            className="h-8 w-1 rounded-full"
-                            style={{
-                              backgroundColor: row.team_colour ? `#${row.team_colour}` : "#e10600",
-                            }}
+                          <DriverAvatar
+                            name={row.full_name}
+                            acronym={row.name_acronym}
+                            headshotUrl={row.headshot_url}
+                            teamColour={row.team_colour}
                           />
-                          <div>
-                            <div className="font-display text-lg leading-none tracking-wide">
-                              {row.name_acronym}
-                            </div>
-                            <div className="text-xs text-muted">{row.full_name}</div>
-                          </div>
+                          <div className="text-sm text-white">{row.full_name}</div>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-muted">{row.team_name}</td>

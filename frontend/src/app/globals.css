@@ -1,13 +1,13 @@
 @import "tailwindcss";
 
 :root {
-  --background: #07090d;
+  --background: #06080c;
   --foreground: #f4f4f5;
   --accent: #e10600;
   --cyan: #3de7ff;
-  --panel: #10141c;
-  --ink-850: #0c1018;
-  --ink-900: #080b10;
+  --panel: #0e1219;
+  --ink-850: #0a0e14;
+  --ink-900: #06080c;
   --fog: #c4c9d4;
   --muted: #7d8698;
 }
@@ -38,15 +38,59 @@ body {
   font-family: var(--font-display), Impact, sans-serif;
 }
 
-.bg-grid {
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
-  background-size: 48px 48px;
-  mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+/* Pit-lane timing stripes — not a generic grid */
+.bg-timing {
+  background-image: repeating-linear-gradient(
+    -18deg,
+    transparent 0,
+    transparent 11px,
+    rgba(255, 255, 255, 0.028) 11px,
+    rgba(255, 255, 255, 0.028) 12px
+  );
+  mask-image: linear-gradient(180deg, black 0%, transparent 85%);
 }
 
 ::selection {
   background: color-mix(in srgb, var(--accent) 55%, transparent);
   color: white;
+}
+
+@keyframes rf-fade-in {
+  from {
+    opacity: 0;
+    clip-path: inset(0 8% 0 0);
+  }
+  to {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.rf-fade-in {
+  animation: rf-fade-in 0.5s ease-out both;
+}
+
+/* No transform — translateX inside overflow-x-auto pops a bottom scrollbar */
+.rf-row-hover {
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: inset 0 0 0 transparent;
+}
+
+.rf-row-hover:hover {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.rf-table-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.rf-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.rf-pos {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
 }

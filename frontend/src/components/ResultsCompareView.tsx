@@ -11,6 +11,7 @@ import {
   type PredictionCompareResponse,
 } from "@/lib/api";
 import { CompoundPills } from "./CompoundPills";
+import { DriverAvatar } from "./DriverAvatar";
 
 function compoundKey(compounds: string[]): string {
   return [...compounds].map((c) => c.toUpperCase()).sort().join("|");
@@ -78,11 +79,21 @@ function deltaClass(delta: number | null) {
   return "text-accent";
 }
 
-function ScoreCard({ title, lines }: { title: string; lines: string[] }) {
+function ScoreCard({
+  title,
+  headline,
+  lines,
+}: {
+  title: string;
+  headline: string;
+  lines: string[];
+}) {
   return (
-    <div className="border border-white/10 bg-panel/80 px-4 py-3">
-      <p className="text-[11px] uppercase tracking-[0.16em] text-muted">{title}</p>
-      <ul className="mt-2 space-y-1 text-sm text-white">
+    <div className="relative overflow-hidden border border-white/10 bg-panel/90 px-4 py-4">
+      <div className="pointer-events-none absolute left-0 top-0 h-full w-1 bg-accent/70" aria-hidden />
+      <p className="text-[10px] uppercase tracking-[0.2em] text-muted">{title}</p>
+      <p className="mt-2 font-display text-3xl tracking-wide text-white">{headline}</p>
+      <ul className="mt-3 space-y-1 text-xs text-fog">
         {lines.map((line) => (
           <li key={line}>{line}</li>
         ))}
@@ -126,12 +137,6 @@ export function ResultsCompareView({
         >
           ← Saves
         </Link>
-        {snap.name && (
-          <span className="text-sm text-fog">{snap.name}</span>
-        )}
-      </div>
-
-      <section className="flex flex-wrap items-center gap-3">
         <span
           className={`border px-3 py-1.5 text-[11px] uppercase tracking-[0.14em] ${lockClass(compare.lock_status)}`}
         >
@@ -146,47 +151,56 @@ export function ResultsCompareView({
         >
           {compare.status === "scored" ? "Scored" : "Actuals pending"}
         </span>
-        <div className="text-xs text-muted">
+        <div className="font-mono text-xs text-muted">
           Saved {fmtWhen(snap.saved_at)}
           {" · "}
-          Race start {fmtWhen(snap.race_start_at)}
+          Race {fmtWhen(snap.race_start_at)}
         </div>
-      </section>
+      </div>
 
       {compare.status === "scored" && metrics && (
         <section className="grid gap-3 sm:grid-cols-3">
           <ScoreCard
             title="Classification"
+            headline={
+              metrics.classification.spearman != null
+                ? String(metrics.classification.spearman)
+                : "—"
+            }
             lines={[
-              `Spearman ${metrics.classification.spearman ?? "—"}`,
+              `Spearman rank`,
               `Top-3 hits ${metrics.classification.top3_hits ?? "—"}/3`,
               `MAE pos ${metrics.classification.mae_pos ?? "—"}`,
             ]}
           />
           <ScoreCard
             title="Race time"
+            headline={
+              metrics.race_time.mae_s != null ? `${metrics.race_time.mae_s}s` : "—"
+            }
             lines={[
-              `MAE ${metrics.race_time.mae_s != null ? `${metrics.race_time.mae_s}s` : "—"}`,
+              `MAE duration`,
               `RMSE ${metrics.race_time.rmse_s != null ? `${metrics.race_time.rmse_s}s` : "—"}`,
               `n ${metrics.race_time.n ?? 0}`,
             ]}
           />
           <ScoreCard
-            title="Strategy (top 4)"
+            title="Strategy"
+            headline={
+              metrics.strategy.compound_match_rate != null
+                ? `${(Number(metrics.strategy.compound_match_rate) * 100).toFixed(0)}%`
+                : "—"
+            }
             lines={[
-              `Field hit ${metrics.strategy.compound_matches ?? 0}/${metrics.strategy.n ?? 0}`,
-              `Rate ${
-                metrics.strategy.compound_match_rate != null
-                  ? `${(Number(metrics.strategy.compound_match_rate) * 100).toFixed(0)}%`
-                  : "—"
-              }`,
+              `Top-4 field hit rate`,
+              `Hits ${metrics.strategy.compound_matches ?? 0}/${metrics.strategy.n ?? 0}`,
             ]}
           />
         </section>
       )}
 
       {compare.status === "awaiting_race" && (
-        <div className="border border-white/10 bg-panel/50 px-4 py-3 text-sm text-fog">
+        <div className="border-l-2 border-sky-400/60 bg-sky-500/5 px-4 py-3 text-sm text-fog">
           Official results not in yet — predictions below stay locked until OpenF1 posts
           session_result.
         </div>
@@ -194,14 +208,14 @@ export function ResultsCompareView({
 
       <section className="space-y-3">
         <h2 className="font-display text-2xl tracking-wide text-white">Classification</h2>
-        <div className="overflow-x-auto rounded-sm border border-white/10 bg-panel/80">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-white/10 text-[11px] uppercase tracking-[0.14em] text-muted">
+        <div className="rf-table-wrap border border-white/10 bg-panel/90">
+          <table className="min-w-[480px] text-left text-sm">
+            <thead className="border-b border-white/10 bg-ink-850/80 text-[11px] uppercase tracking-[0.14em] text-muted">
               <tr>
-                <th className="px-3 py-2">Driver</th>
-                <th className="px-3 py-2">Pred</th>
-                <th className="px-3 py-2">Actual</th>
-                <th className="px-3 py-2">Δ</th>
+                <th className="px-3 py-2.5">Driver</th>
+                <th className="px-3 py-2.5">Pred</th>
+                <th className="px-3 py-2.5">Actual</th>
+                <th className="px-3 py-2.5">Δ</th>
               </tr>
             </thead>
             <tbody>
@@ -210,13 +224,28 @@ export function ResultsCompareView({
                 const delta = act ? row.position - act.position : null;
                 return (
                   <tr key={row.driver_number} className="border-t border-white/5">
-                    <td className="px-3 py-2">
-                      <span className="font-semibold text-white">{row.name_acronym}</span>
-                      <span className="ml-2 text-muted">{row.team_name}</span>
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-3">
+                        <DriverAvatar
+                          name={row.full_name}
+                          acronym={row.name_acronym}
+                          headshotUrl={row.headshot_url}
+                          teamColour={row.team_colour}
+                          size={36}
+                        />
+                        <div>
+                          <div className="text-sm text-white">{row.full_name}</div>
+                          <div className="text-xs text-muted">{row.team_name}</div>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-3 py-2 text-white">{row.position}</td>
-                    <td className="px-3 py-2 text-fog">{act?.position ?? "—"}</td>
-                    <td className={`px-3 py-2 ${deltaClass(delta)}`}>
+                    <td className="rf-pos px-3 py-2.5 font-display text-lg text-white">
+                      {String(row.position).padStart(2, "0")}
+                    </td>
+                    <td className="rf-pos px-3 py-2.5 font-display text-lg text-fog">
+                      {act ? String(act.position).padStart(2, "0") : "—"}
+                    </td>
+                    <td className={`px-3 py-2.5 font-mono ${deltaClass(delta)}`}>
                       {delta == null ? "—" : delta === 0 ? "0" : delta > 0 ? `+${delta}` : delta}
                     </td>
                   </tr>
@@ -229,14 +258,14 @@ export function ResultsCompareView({
 
       <section className="space-y-3">
         <h2 className="font-display text-2xl tracking-wide text-white">Race time</h2>
-        <div className="overflow-x-auto rounded-sm border border-white/10 bg-panel/80">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-white/10 text-[11px] uppercase tracking-[0.14em] text-muted">
+        <div className="rf-table-wrap border border-white/10 bg-panel/90">
+          <table className="min-w-[520px] text-left text-sm">
+            <thead className="border-b border-white/10 bg-ink-850/80 text-[11px] uppercase tracking-[0.14em] text-muted">
               <tr>
-                <th className="px-3 py-2">Driver</th>
-                <th className="px-3 py-2">Pred</th>
-                <th className="px-3 py-2">Actual</th>
-                <th className="px-3 py-2">Δ</th>
+                <th className="px-3 py-2.5">Driver</th>
+                <th className="px-3 py-2.5">Pred</th>
+                <th className="px-3 py-2.5">Actual</th>
+                <th className="px-3 py-2.5">Δ</th>
               </tr>
             </thead>
             <tbody>
@@ -252,15 +281,26 @@ export function ResultsCompareView({
                   const delta = pred != null && actual != null ? pred - actual : null;
                   return (
                     <tr key={row.driver_number} className="border-t border-white/5">
-                      <td className="px-3 py-2 font-semibold text-white">{row.name_acronym}</td>
-                      <td className="px-3 py-2 text-fog">
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-3">
+                          <DriverAvatar
+                            name={row.full_name}
+                            acronym={row.name_acronym}
+                            headshotUrl={row.headshot_url}
+                            teamColour={row.team_colour}
+                            size={36}
+                          />
+                          <span className="text-sm text-white">{row.full_name}</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-fog">
                         {pred != null ? formatRaceTime(pred) : "—"}
                       </td>
-                      <td className="px-3 py-2 text-fog">
+                      <td className="px-3 py-2.5 font-mono text-fog">
                         {actual != null ? formatRaceTime(actual) : "—"}
                       </td>
                       <td
-                        className={`px-3 py-2 ${deltaClass(delta == null ? null : Math.sign(delta))}`}
+                        className={`px-3 py-2.5 font-mono ${deltaClass(delta == null ? null : Math.sign(delta))}`}
                       >
                         {delta == null
                           ? "—"
@@ -276,16 +316,16 @@ export function ResultsCompareView({
 
       <section className="space-y-3">
         <h2 className="font-display text-2xl tracking-wide text-white">Predicted strategies</h2>
-        <div className="overflow-x-auto rounded-sm border border-white/10 bg-panel/80">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-white/10 text-[11px] uppercase tracking-[0.14em] text-muted">
+        <div className="rf-table-wrap border border-white/10 bg-panel/90">
+          <table className="min-w-[640px] text-left text-sm">
+            <thead className="border-b border-white/10 bg-ink-850/80 text-[11px] uppercase tracking-[0.14em] text-muted">
               <tr>
-                <th className="px-3 py-2">Rank</th>
-                <th className="px-3 py-2">Compounds</th>
-                <th className="px-3 py-2">Pit window</th>
-                <th className="px-3 py-2">Pred time</th>
-                <th className="px-3 py-2">Gap</th>
-                <th className="px-3 py-2">Field</th>
+                <th className="px-3 py-2.5">Rank</th>
+                <th className="px-3 py-2.5">Compounds</th>
+                <th className="px-3 py-2.5">Pit window</th>
+                <th className="px-3 py-2.5">Pred time</th>
+                <th className="px-3 py-2.5">Gap</th>
+                <th className="px-3 py-2.5">Field</th>
               </tr>
             </thead>
             <tbody>
@@ -295,21 +335,23 @@ export function ResultsCompareView({
                 ).length;
                 return (
                   <tr key={`${row.rank}-${row.strategy_label}`} className="border-t border-white/5">
-                    <td className="px-3 py-2 font-mono text-muted">{row.rank}</td>
-                    <td className="px-3 py-2">
+                    <td className="rf-pos px-3 py-2.5 font-display text-lg text-accent">
+                      {String(row.rank).padStart(2, "0")}
+                    </td>
+                    <td className="px-3 py-2.5">
                       <CompoundPills compounds={row.compounds} />
                       <span className="ml-2 text-[11px] text-muted">{row.stops}-stop</span>
                     </td>
-                    <td className="px-3 py-2 font-mono text-fog">
+                    <td className="px-3 py-2.5 font-mono text-fog">
                       {formatPitWindows(row.pit_windows, row.pit_laps)}
                     </td>
-                    <td className="px-3 py-2 font-mono text-fog">
+                    <td className="px-3 py-2.5 font-mono text-fog">
                       {formatRaceTime(row.predicted_race_time_s)}
                     </td>
-                    <td className="px-3 py-2 font-mono text-fog">
+                    <td className="px-3 py-2.5 font-mono text-fog">
                       {formatGap(row.gap_to_best_s)}
                     </td>
-                    <td className="px-3 py-2 font-mono text-xs text-muted">
+                    <td className="px-3 py-2.5 font-mono text-xs text-muted">
                       {compare.status === "scored"
                         ? fieldN > 0
                           ? `${fieldN} cars`
@@ -327,13 +369,13 @@ export function ResultsCompareView({
       {compare.actual_strategies.length > 0 && (
         <section className="space-y-3">
           <h2 className="font-display text-2xl tracking-wide text-white">Actual field strategies</h2>
-          <div className="overflow-x-auto rounded-sm border border-white/10 bg-panel/80">
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-white/10 text-[11px] uppercase tracking-[0.14em] text-muted">
+          <div className="rf-table-wrap border border-white/10 bg-panel/90">
+            <table className="min-w-[360px] text-left text-sm">
+              <thead className="border-b border-white/10 bg-ink-850/80 text-[11px] uppercase tracking-[0.14em] text-muted">
                 <tr>
-                  <th className="px-3 py-2">Compounds</th>
-                  <th className="px-3 py-2">Cars</th>
-                  <th className="px-3 py-2">In top 4</th>
+                  <th className="px-3 py-2.5">Compounds</th>
+                  <th className="px-3 py-2.5">Cars</th>
+                  <th className="px-3 py-2.5">In top 4</th>
                 </tr>
               </thead>
               <tbody>
@@ -352,11 +394,11 @@ export function ResultsCompareView({
                     const hit = compoundsInTop4(snap.strategy.strategies, row.compounds);
                     return (
                       <tr key={key} className="border-t border-white/5">
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-2.5">
                           <CompoundPills compounds={row.compounds} />
                         </td>
-                        <td className="px-3 py-2 font-mono text-fog">{row.count}</td>
-                        <td className={`px-3 py-2 ${hit ? "text-emerald-300" : "text-accent"}`}>
+                        <td className="px-3 py-2.5 font-mono text-fog">{row.count}</td>
+                        <td className={`px-3 py-2.5 font-display ${hit ? "text-emerald-300" : "text-accent"}`}>
                           {hit ? "Yes" : "No"}
                         </td>
                       </tr>

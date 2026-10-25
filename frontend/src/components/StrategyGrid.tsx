@@ -28,10 +28,10 @@ export function StrategyGrid({ strategies, actual = [] }: Props) {
   const showActual = actual.length > 0;
 
   return (
-    <div className="overflow-x-auto rounded-sm border border-white/10 bg-panel/80 backdrop-blur">
-      <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+    <div className="rf-table-wrap border border-white/10 bg-panel/90">
+      <table className="min-w-[640px] text-left text-sm">
         <thead>
-          <tr className="border-b border-white/10 text-[11px] uppercase tracking-[0.14em] text-muted">
+          <tr className="border-b border-white/10 bg-ink-850/80 text-[11px] uppercase tracking-[0.14em] text-muted">
             <th className="px-4 py-3 font-medium">Rank</th>
             <th className="px-4 py-3 font-medium">Plan</th>
             <th className="px-4 py-3 font-medium">Compounds</th>

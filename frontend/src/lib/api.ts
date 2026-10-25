@@ -9,6 +9,8 @@ export type MeetingSummary = {
   date_start: string | null;
   is_default: boolean;
   race_laps: number;
+  circuit_image?: string | null;
+  country_flag?: string | null;
 };
 
 export type StintPlan = {
@@ -113,6 +115,7 @@ export type PredictedFinish = {
   full_name: string;
   team_name: string;
   team_colour: string | null;
+  headshot_url?: string | null;
   estimated_race_time_s: number | null;
   gap_to_leader_s: number | null;
   strategy_label: string | null;
@@ -191,6 +194,33 @@ async function deleteJson<T>(path: string): Promise<T> {
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+/** Encode leftover spaces in F1 CDN paths (OpenF1 quirk). */
+export function mediaUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  return url.replace(/ /g, "%20");
+}
+
+/** Fill missing circuit art from the live /api/races catalogue. */
+export function withMeetingArt<T extends {
+  meeting_key: number;
+  circuit_image?: string | null;
+  country_flag?: string | null;
+}>(item: T, races: MeetingSummary[]): T {
+  const live = races.find((r) => r.meeting_key === item.meeting_key);
+  if (!live) {
+    return {
+      ...item,
+      circuit_image: mediaUrl(item.circuit_image),
+      country_flag: mediaUrl(item.country_flag),
+    };
+  }
+  return {
+    ...item,
+    circuit_image: mediaUrl(item.circuit_image || live.circuit_image),
+    country_flag: mediaUrl(item.country_flag || live.country_flag),
+  };
+}
+
 export function fetchRaces() {
   return getJson<MeetingSummary[]>("/api/races");
 }
@@ -232,6 +262,8 @@ export type PredictionMeetingListItem = {
   meeting_name: string;
   year: number | null;
   circuit_short_name: string | null;
+  circuit_image?: string | null;
+  country_flag?: string | null;
   first_saved_at: string | null;
   saved_at: string | null;
   race_start_at: string | null;
@@ -247,6 +279,8 @@ export type PredictionSaveListItem = {
   meeting_name: string;
   year: number | null;
   circuit_short_name: string | null;
+  circuit_image?: string | null;
+  country_flag?: string | null;
   first_saved_at: string | null;
   saved_at: string | null;
   race_start_at: string | null;
