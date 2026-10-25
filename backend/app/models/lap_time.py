@@ -26,7 +26,7 @@ class LapTimeModel:
     MODEL_FILE = "lap_time_xgb.joblib"
     META_FILE = "lap_time_meta.json"
     BASELINES_FILE = "circuit_baselines.json"
-    VERSION = "xgboost-lap-v2"
+    VERSION = "xgboost-lap-v3"
 
     def __init__(self, artifact_dir: Path | None = None) -> None:
         self.artifact_dir = artifact_dir or settings.model_dir
@@ -102,23 +102,47 @@ class LapTimeModel:
         y_test_abs = test_df["lap_duration"].to_numpy(dtype=np.float32)
         baseline_test = test_df["baseline"].to_numpy(dtype=np.float32)
 
+        # Inner temporal holdout for early stopping (last 10% of train).
+        es_idx = max(1, int(len(train_df) * 0.9))
+        fit_df, es_df = train_df.iloc[:es_idx], train_df.iloc[es_idx:]
+        if es_df.empty:
+            fit_df, es_df = train_df, test_df
+
+        x_fit = fit_df[FEATURE_COLUMNS].to_numpy(dtype=np.float32)
+        y_fit = fit_df["residual"].to_numpy(dtype=np.float32)
+        w_fit = fit_df["sample_weight"].to_numpy(dtype=np.float32)
+        x_es = es_df[FEATURE_COLUMNS].to_numpy(dtype=np.float32)
+        y_es = es_df["residual"].to_numpy(dtype=np.float32)
+
         device = xgb_device()
+        # Tuned 2026-10: shallower trees + L1 beat depth-6 / 350 trees on temporal holdout.
         self.model = XGBRegressor(
-            n_estimators=350,
-            max_depth=6,
+            n_estimators=400,
+            max_depth=4,
             learning_rate=0.05,
-            subsample=0.85,
-            colsample_bytree=0.85,
-            min_child_weight=3,
+            subsample=0.9,
+            colsample_bytree=0.9,
+            min_child_weight=5,
+            reg_lambda=1.0,
+            reg_alpha=0.5,
+            gamma=0.0,
             objective="reg:squarederror",
             device=device,
             n_jobs=4,
             random_state=42,
+            early_stopping_rounds=40,
         )
-        self.model.fit(x_train, y_train, sample_weight=w_train)
+        self.model.fit(
+            x_fit,
+            y_fit,
+            sample_weight=w_fit,
+            eval_set=[(x_es, y_es)],
+            verbose=False,
+        )
         preds = baseline_test + self.model.predict(x_test)
         mae = float(mean_absolute_error(y_test_abs, preds))
         rmse = float(np.sqrt(mean_squared_error(y_test_abs, preds)))
+        best_iteration = int(getattr(self.model, "best_iteration", None) or self.model.n_estimators)
 
         self.meta = {
             "version": self.VERSION,
@@ -128,6 +152,7 @@ class LapTimeModel:
             "n_test": int(len(test_df)),
             "mae": mae,
             "rmse": rmse,
+            "best_iteration": best_iteration,
             "feature_columns": FEATURE_COLUMNS,
             "wet_compounds": True,
             "sc_downweight": True,
