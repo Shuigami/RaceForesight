@@ -12,6 +12,34 @@ from app.config import settings
 from app.domain.circuit_laps import resolve_race_laps
 from app.domain.models import ActualDriverStrategy, MeetingSummary, StintPlan
 
+# Meeting weekend can start Fri while race is Sun — keep "next" through race day.
+_DEFAULT_MEETING_LOOKBACK = pd.Timedelta(days=4)
+
+
+def pick_default_meeting_key(
+    meetings: pd.DataFrame,
+    *,
+    now: datetime | None = None,
+) -> int:
+    """Pick Austin / United States GP when possible; never prefer Las Vegas via country alone."""
+    if meetings.empty:
+        return -1
+    now = now or datetime.now(timezone.utc)
+
+    circuit = meetings["circuit_short_name"].astype(str)
+    name = meetings["meeting_name"].astype(str)
+    austin = meetings[
+        circuit.str.upper().eq("COTA")
+        | circuit.str.contains("Austin", case=False, na=False)
+        | name.str.contains("United States", case=False, na=False)
+    ].copy()
+    pool = austin if not austin.empty else meetings.copy()
+    pool["date_start"] = pd.to_datetime(pool["date_start"], utc=True, errors="coerce")
+    upcoming = pool[pool["date_start"] >= now - _DEFAULT_MEETING_LOOKBACK].sort_values("date_start")
+    if not upcoming.empty:
+        return int(upcoming.iloc[0]["meeting_key"])
+    return int(pool.sort_values("date_start").iloc[-1]["meeting_key"])
+
 
 def actual_strategies_from_stints(
     stints: pd.DataFrame,
@@ -122,7 +150,11 @@ class RaceDataPipeline:
         return out
 
     def resolve_default_meeting_key(self, meetings: pd.DataFrame | None = None) -> int:
-        """Prefer next upcoming United States / COTA meeting; else latest US GP."""
+        """Prefer next/current Austin (COTA / United States GP); else latest such meeting.
+
+        Las Vegas / Miami are also "United States" in OpenF1 — do not treat them as the
+        default target. Keep a multi-day weekend window so race Sunday still counts.
+        """
         if meetings is None:
             frames = []
             for year in range(2023, settings.default_season + 1):
@@ -134,19 +166,7 @@ class RaceDataPipeline:
         if meetings.empty:
             return -1
 
-        us = meetings[
-            meetings["country_name"].astype(str).str.contains("United States", case=False, na=False)
-            | meetings["circuit_short_name"].astype(str).str.upper().eq("COTA")
-            | meetings["meeting_name"].astype(str).str.contains("United States", case=False, na=False)
-        ].copy()
-        pool = us if not us.empty else meetings
-        pool = pool.copy()
-        pool["date_start"] = pd.to_datetime(pool["date_start"], utc=True, errors="coerce")
-        now = datetime.now(timezone.utc)
-        upcoming = pool[pool["date_start"] >= now - pd.Timedelta(days=1)].sort_values("date_start")
-        if not upcoming.empty:
-            return int(upcoming.iloc[0]["meeting_key"])
-        return int(pool.sort_values("date_start").iloc[-1]["meeting_key"])
+        return pick_default_meeting_key(meetings, now=datetime.now(timezone.utc))
 
     def get_meeting(self, meeting_key: int | None = None) -> MeetingSummary:
         meetings = self.list_meetings()
