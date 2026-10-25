@@ -33,6 +33,18 @@ export type DriverStrategy = {
   strategy_label: string;
 };
 
+export type GlobalStrategy = {
+  rank: number;
+  stops: number;
+  compounds: string[];
+  pit_laps: number[];
+  stints: StintPlan[];
+  predicted_race_time_s: number;
+  predicted_avg_lap_s: number | null;
+  strategy_label: string;
+  gap_to_best_s: number;
+};
+
 export type ActualDriverStrategy = {
   driver_number: number;
   stops: number;
@@ -44,7 +56,7 @@ export type ActualDriverStrategy = {
 
 export type StrategyResponse = {
   meeting: MeetingSummary;
-  drivers: DriverStrategy[];
+  strategies: GlobalStrategy[];
   actual?: ActualDriverStrategy[];
   model_version: string;
   generated_at: string;
@@ -202,7 +214,7 @@ export type PredictionSnapshot = {
   };
   classification: { standings: PredictedFinish[]; note: string };
   race_time: { standings: PredictedFinish[]; note: string };
-  strategy: { drivers: DriverStrategy[] };
+  strategy: { strategies: GlobalStrategy[] };
 };
 
 export type ActualFinishRow = {

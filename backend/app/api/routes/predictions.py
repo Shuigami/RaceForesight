@@ -122,7 +122,7 @@ def save_predictions(meeting_key: int) -> PredictionCompareResponse:
                 standings=race_time.standings,
                 note=race_time.note,
             ),
-            strategy=SavedStrategySlice(drivers=strategy.drivers),
+            strategy=SavedStrategySlice(strategies=strategy.strategies),
         )
         save_snapshot(key, payload.model_dump(mode="json"))
         return _compare_from_snapshot(payload)
@@ -176,7 +176,7 @@ def _compare_from_snapshot(snapshot: PredictionSnapshot) -> PredictionCompareRes
                 durations,
             ),
             strategy=strategy_metrics(
-                [d.model_dump() for d in snapshot.strategy.drivers],
+                [s.model_dump() for s in snapshot.strategy.strategies],
                 actual_compounds,
             ),
         )

@@ -1,84 +1,67 @@
 "use client";
 
-import type { ActualDriverStrategy, DriverStrategy } from "@/lib/api";
+import type { ActualDriverStrategy, GlobalStrategy } from "@/lib/api";
+import { formatRaceTime } from "@/lib/api";
 import { CompoundPills } from "./CompoundPills";
 
 type Props = {
-  drivers: DriverStrategy[];
+  strategies: GlobalStrategy[];
   actual?: ActualDriverStrategy[];
-  selected: number | null;
-  onSelect: (driverNumber: number) => void;
 };
 
-export function StrategyGrid({ drivers, actual = [], selected, onSelect }: Props) {
-  const actualByDriver = new Map(actual.map((a) => [a.driver_number, a]));
+function formatGap(seconds: number): string {
+  if (seconds === 0) return "baseline";
+  const sign = seconds > 0 ? "+" : "";
+  return `${sign}${seconds.toFixed(1)}s`;
+}
+
+function compoundKey(compounds: string[]): string {
+  return [...compounds].map((c) => c.toUpperCase()).sort().join("|");
+}
+
+export function StrategyGrid({ strategies, actual = [] }: Props) {
+  const fieldCounts = new Map<string, number>();
+  for (const a of actual) {
+    const key = compoundKey(a.compounds);
+    fieldCounts.set(key, (fieldCounts.get(key) ?? 0) + 1);
+  }
   const showActual = actual.length > 0;
-  const ordered = [...drivers].sort(
-    (a, b) =>
-      a.team_name.localeCompare(b.team_name) ||
-      a.name_acronym.localeCompare(b.name_acronym),
-  );
 
   return (
     <div className="overflow-x-auto rounded-sm border border-white/10 bg-panel/80 backdrop-blur">
-      <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+      <table className="w-full min-w-[640px] border-collapse text-left text-sm">
         <thead>
           <tr className="border-b border-white/10 text-[11px] uppercase tracking-[0.14em] text-muted">
-            <th className="px-4 py-3 font-medium">#</th>
-            <th className="px-4 py-3 font-medium">Driver</th>
-            <th className="px-4 py-3 font-medium">Team</th>
-            <th className="px-4 py-3 font-medium">Predicted</th>
+            <th className="px-4 py-3 font-medium">Rank</th>
+            <th className="px-4 py-3 font-medium">Plan</th>
             <th className="px-4 py-3 font-medium">Compounds</th>
             <th className="px-4 py-3 font-medium">Pit laps</th>
-            {showActual && <th className="px-4 py-3 font-medium">Actual</th>}
+            <th className="px-4 py-3 font-medium">Pred time</th>
+            <th className="px-4 py-3 font-medium">Gap</th>
+            {showActual && <th className="px-4 py-3 font-medium">Field</th>}
           </tr>
         </thead>
         <tbody>
-          {ordered.map((d, idx) => {
-            const active = selected === d.driver_number;
-            const ran = actualByDriver.get(d.driver_number);
+          {strategies.map((s) => {
+            const fieldN = fieldCounts.get(compoundKey(s.compounds)) ?? 0;
             return (
-              <tr
-                key={d.driver_number}
-                onClick={() => onSelect(d.driver_number)}
-                className={`cursor-pointer border-b border-white/5 transition-colors ${
-                  active ? "bg-accent/15" : "hover:bg-white/5"
-                }`}
-              >
-                <td className="px-4 py-3 font-mono text-muted">{idx + 1}</td>
+              <tr key={`${s.rank}-${s.strategy_label}`} className="border-b border-white/5">
+                <td className="px-4 py-3 font-mono text-muted">{s.rank}</td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <span
-                      className="h-8 w-1 rounded-full"
-                      style={{ backgroundColor: d.team_colour ? `#${d.team_colour}` : "#e10600" }}
-                    />
-                    <div>
-                      <div className="font-display text-lg leading-none tracking-wide">{d.name_acronym}</div>
-                      <div className="text-xs text-muted">{d.full_name}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-muted">{d.team_name}</td>
-                <td className="px-4 py-3">
-                  <span className="font-mono text-xs text-fog">{d.stops}-stop</span>
+                  <span className="font-mono text-xs text-fog">{s.stops}-stop</span>
+                  <span className="ml-2 text-xs text-muted">{s.strategy_label}</span>
                 </td>
                 <td className="px-4 py-3">
-                  <CompoundPills compounds={d.compounds} />
+                  <CompoundPills compounds={s.compounds} />
                 </td>
-                <td className="px-4 py-3 font-mono text-fog">{d.pit_laps.join(", ")}</td>
+                <td className="px-4 py-3 font-mono text-fog">{s.pit_laps.join(", ")}</td>
+                <td className="px-4 py-3 font-mono text-white">
+                  {formatRaceTime(s.predicted_race_time_s)}
+                </td>
+                <td className="px-4 py-3 font-mono text-fog">{formatGap(s.gap_to_best_s)}</td>
                 {showActual && (
-                  <td className="px-4 py-3">
-                    {ran ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-xs text-fog">{ran.stops}-stop</span>
-                        <CompoundPills compounds={ran.compounds} />
-                        <span className="font-mono text-xs text-muted">
-                          @{ran.pit_laps.join(", ") || "—"}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted">—</span>
-                    )}
+                  <td className="px-4 py-3 font-mono text-xs text-muted">
+                    {fieldN > 0 ? `${fieldN} cars` : "—"}
                   </td>
                 )}
               </tr>

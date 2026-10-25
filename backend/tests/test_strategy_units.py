@@ -1,3 +1,4 @@
+from app.domain.models import StintPlan
 from app.simulation.strategy import StrategySimulator
 
 
@@ -17,3 +18,25 @@ def test_stints_cover_full_race():
     assert stints[-1].lap_end == 56
     assert stints[0].lap_end == 20
     assert stints[1].lap_start == 21
+
+
+def test_to_global_strategies_ranks_and_gaps():
+    sim = StrategySimulator.__new__(StrategySimulator)
+    stints = [
+        StintPlan(compound="MEDIUM", lap_start=1, lap_end=20),
+        StintPlan(compound="HARD", lap_start=21, lap_end=56),
+    ]
+    scored = [
+        (5100.0, {"stops": 1, "compounds": ["SOFT", "HARD"], "pit_laps": [18], "label": "a"}, stints),
+        (5000.0, {"stops": 1, "compounds": ["MEDIUM", "HARD"], "pit_laps": [22], "label": "b"}, stints),
+        (5050.0, {"stops": 1, "compounds": ["HARD", "MEDIUM"], "pit_laps": [26], "label": "c"}, stints),
+        (5200.0, {"stops": 2, "compounds": ["SOFT", "MEDIUM", "HARD"], "pit_laps": [12, 32], "label": "d"}, stints),
+        (5300.0, {"stops": 2, "compounds": ["MEDIUM", "SOFT", "HARD"], "pit_laps": [15, 36], "label": "e"}, stints),
+    ]
+    out = StrategySimulator._to_global_strategies(sim, scored, 56, top_n=4)
+    assert len(out) == 4
+    assert [s.rank for s in out] == [1, 2, 3, 4]
+    assert out[0].gap_to_best_s == 0.0
+    assert out[0].strategy_label == "b"
+    assert out[1].gap_to_best_s == 50.0
+    assert out[2].gap_to_best_s == 100.0

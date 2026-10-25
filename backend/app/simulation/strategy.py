@@ -11,6 +11,7 @@ from app.config import settings
 from app.data.pipeline import RaceDataPipeline
 from app.domain.models import (
     DriverStrategy,
+    GlobalStrategy,
     MeetingSummary,
     PacePoint,
     StintPaceCurve,
@@ -385,37 +386,71 @@ class StrategySimulator:
 
         return best, alternatives, deg, stint_curves, options
 
-    def simulate_grid(self, meeting_key: int | None = None, top_n: int = 3) -> StrategyResponse:
+    def _to_global_strategies(
+        self,
+        scored: list[tuple[float, dict, list[StintPlan]]],
+        total_laps: int,
+        top_n: int,
+    ) -> list[GlobalStrategy]:
+        ranked = sorted(scored, key=lambda x: x[0])[:top_n]
+        if not ranked:
+            return []
+        best_time = ranked[0][0]
+        out: list[GlobalStrategy] = []
+        for i, (race_time, strat, stints) in enumerate(ranked):
+            out.append(
+                GlobalStrategy(
+                    rank=i + 1,
+                    stops=int(strat["stops"]),
+                    compounds=list(strat["compounds"]),
+                    pit_laps=list(strat["pit_laps"]),
+                    stints=stints,
+                    predicted_race_time_s=round(race_time, 3),
+                    predicted_avg_lap_s=round(race_time / total_laps, 3) if total_laps else None,
+                    strategy_label=str(strat["label"]),
+                    gap_to_best_s=round(race_time - best_time, 3),
+                )
+            )
+        return out
+
+    def simulate_grid(self, meeting_key: int | None = None, top_n: int = 4) -> StrategyResponse:
+        """Top dry tyre strategies for the race (field-level, not per driver)."""
+        self._ensure_model()
         meeting = self.pipeline.get_meeting(meeting_key)
         drivers = self.pipeline.drivers_for_meeting(meeting.meeting_key)
         if drivers.empty:
             raise RuntimeError("No drivers found for meeting")
 
-        # Full entry list for the meeting (2026 grid can be > 20)
         drivers = drivers.drop_duplicates(subset=["driver_number"])
         if "team_name" in drivers.columns:
             drivers = drivers[drivers["team_name"].notna()]
+        if drivers.empty:
+            raise RuntimeError("No drivers found for meeting")
 
+        # Reference car only — pace_offset=0 so ranking is compound/pit shape, not driver pace
+        ref = drivers.iloc[0].to_dict()
         pit_loss = self.pipeline.estimate_pit_loss(circuit_short_name=meeting.circuit_short_name or "COTA")
-        offsets = self._pace_offsets(drivers, meeting.circuit_short_name or "COTA")
+        total_laps = meeting.race_laps
+        circuit = meeting.circuit_short_name or "COTA"
 
-        results: list[DriverStrategy] = []
-        for _, row in drivers.iterrows():
-            driver = row.to_dict()
-            best, _, _, _, _ = self.simulate_driver(
-                driver=driver,
-                meeting=meeting,
+        scored: list[tuple[float, dict, list[StintPlan]]] = []
+        for strat in self._candidate_strategies(total_laps):
+            race_time, stints = self.score_strategy(
+                driver_number=int(ref["driver_number"]),
+                team_name=str(ref.get("team_name") or "Unknown"),
+                circuit=circuit,
+                total_laps=total_laps,
+                strategy=strat,
                 pit_loss=pit_loss,
-                pace_offset=offsets.get(int(driver["driver_number"]), 0.0),
-                top_n=top_n,
+                pace_offset=0.0,
             )
-            results.append(best)
+            scored.append((race_time, strat, stints))
 
-        results.sort(key=lambda d: d.predicted_race_time_s)
+        strategies = self._to_global_strategies(scored, total_laps, top_n)
         actual = self.pipeline.actual_strategies_for_meeting(meeting.meeting_key)
         return StrategyResponse(
             meeting=meeting,
-            drivers=results,
+            strategies=strategies,
             actual=actual,
             model_version=self.model.meta.get("version", "xgboost-lap-v1"),
             generated_at=datetime.now(timezone.utc).isoformat(),

@@ -1,6 +1,7 @@
 from .models import (
     ActualDriverStrategy,
     DriverStrategy,
+    GlobalStrategy,
     MeetingSummary,
     PitWindow,
     StintPlan,
@@ -11,6 +12,7 @@ from .models import (
 __all__ = [
     "ActualDriverStrategy",
     "DriverStrategy",
+    "GlobalStrategy",
     "MeetingSummary",
     "PitWindow",
     "StintPlan",

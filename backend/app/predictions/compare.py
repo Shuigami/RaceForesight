@@ -109,17 +109,21 @@ def race_time_metrics(
 
 
 def strategy_metrics(
-    pred_drivers: list[dict[str, Any]],
+    pred_strategies: list[dict[str, Any]],
     actual_by_driver: dict[int, list[str]],
 ) -> dict[str, float | int | None]:
+    """Share of the field whose actual compounds match any of the predicted top strategies."""
+    pred_sets = [
+        {c.upper() for c in (row.get("compounds") or [])}
+        for row in pred_strategies
+        if row.get("compounds")
+    ]
     matched = 0
     n = 0
-    for row in pred_drivers:
-        dn = int(row["driver_number"])
-        if dn not in actual_by_driver:
-            continue
+    for compounds in actual_by_driver.values():
         n += 1
-        if compounds_match(row.get("compounds") or [], actual_by_driver[dn]):
+        act = {c.upper() for c in compounds}
+        if act and any(act == p for p in pred_sets):
             matched += 1
     return {
         "n": n,

@@ -28,6 +28,8 @@ class PitWindow(BaseModel):
 
 
 class DriverStrategy(BaseModel):
+    """Per-driver plan (detail endpoint / pace curves only)."""
+
     driver_number: int
     name_acronym: str
     full_name: str
@@ -40,6 +42,20 @@ class DriverStrategy(BaseModel):
     predicted_race_time_s: float
     predicted_avg_lap_s: float | None = None
     strategy_label: str
+
+
+class GlobalStrategy(BaseModel):
+    """Race-level tyre plan — not tied to a driver."""
+
+    rank: int
+    stops: int
+    compounds: list[str]
+    pit_laps: list[int]
+    stints: list[StintPlan]
+    predicted_race_time_s: float
+    predicted_avg_lap_s: float | None = None
+    strategy_label: str
+    gap_to_best_s: float
 
 
 class ActualDriverStrategy(BaseModel):
@@ -55,7 +71,7 @@ class ActualDriverStrategy(BaseModel):
 
 class StrategyResponse(BaseModel):
     meeting: MeetingSummary
-    drivers: list[DriverStrategy]
+    strategies: list[GlobalStrategy]
     actual: list[ActualDriverStrategy] = Field(default_factory=list)
     model_version: str = "xgboost-lap-v2"
     generated_at: str
@@ -151,7 +167,7 @@ class SavedClassificationSlice(BaseModel):
 
 
 class SavedStrategySlice(BaseModel):
-    drivers: list[DriverStrategy]
+    strategies: list[GlobalStrategy]
 
 
 class PredictionSnapshot(BaseModel):

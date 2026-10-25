@@ -3,16 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  fetchDriverStrategy,
   fetchRaces,
   fetchStrategy,
   savePredictions,
   type MeetingSummary,
-  type StrategyDetail,
   type StrategyResponse,
 } from "@/lib/api";
 import { ClassificationBoard } from "./ClassificationBoard";
-import { DriverDetail } from "./DriverDetail";
 import { ExplainPanel } from "./ExplainPanel";
 import { RaceTimeBoard } from "./RaceTimeBoard";
 import { StrategyGrid } from "./StrategyGrid";
@@ -35,11 +32,8 @@ export function RaceForesightApp() {
   const [meetingKey, setMeetingKey] = useState<number | null>(null);
   const [strategy, setStrategy] = useState<StrategyResponse | null>(null);
   const [strategyKey, setStrategyKey] = useState<number | null>(null);
-  const [detail, setDetail] = useState<StrategyDetail | null>(null);
-  const [selectedDriver, setSelectedDriver] = useState<number | null>(null);
   const [loadingRaces, setLoadingRaces] = useState(true);
   const [loadingStrategy, setLoadingStrategy] = useState(false);
-  const [loadingDetail, setLoadingDetail] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -76,8 +70,6 @@ export function RaceForesightApp() {
   const loadStrategy = useCallback(async (key: number) => {
     setLoadingStrategy(true);
     setError(null);
-    setDetail(null);
-    setSelectedDriver(null);
     try {
       const data = await fetchStrategy(key);
       setStrategy(data);
@@ -101,24 +93,8 @@ export function RaceForesightApp() {
     if (strategyKey != null && strategyKey !== meetingKey) {
       setStrategy(null);
       setStrategyKey(null);
-      setDetail(null);
-      setSelectedDriver(null);
     }
   }, [meetingKey, strategyKey]);
-
-  const onSelectDriver = async (driverNumber: number) => {
-    if (meetingKey == null) return;
-    setSelectedDriver(driverNumber);
-    setLoadingDetail(true);
-    try {
-      const data = await fetchDriverStrategy(meetingKey, driverNumber);
-      setDetail(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Driver detail failed");
-    } finally {
-      setLoadingDetail(false);
-    }
-  };
 
   const onSaveResults = async () => {
     if (meetingKey == null) return;
@@ -172,8 +148,8 @@ export function RaceForesightApp() {
             Strategy tyre wall-clock.
           </p>
           <p>
-            <strong className="text-white">Strategy</strong> finds the fastest dry tyre / pit plan for
-            each driver. Useful to compare plans, not to call the result.
+            <strong className="text-white">Strategy</strong> ranks the fastest dry tyre / pit plans for
+            the race (top 4), with predicted gaps between them — not per-driver optimisation.
           </p>
         </ExplainPanel>
 
@@ -255,30 +231,20 @@ export function RaceForesightApp() {
         <>
           {loadingStrategy && (
             <div className="animate-pulse border border-white/10 bg-panel/60 px-4 py-8 text-center text-sm text-muted">
-              Simulating pit windows for the grid…
+              Ranking dry tyre strategies…
             </div>
           )}
 
           {!loadingStrategy && strategy && (
-            <>
-              <section className="space-y-3">
-                <div className="flex items-baseline justify-between gap-3">
-                  <h2 className="font-display text-2xl tracking-wide text-white">
-                    Optimal tyre strategies
-                  </h2>
-                  <p className="text-xs text-muted">{strategy.model_version}</p>
-                </div>
-                <StrategyGrid
-                  drivers={strategy.drivers}
-                  actual={strategy.actual}
-                  selected={selectedDriver}
-                  onSelect={onSelectDriver}
-                />
-              </section>
-
-              {loadingDetail && <div className="text-sm text-muted">Loading driver detail…</div>}
-              {detail && !loadingDetail && <DriverDetail detail={detail} />}
-            </>
+            <section className="space-y-3">
+              <div className="flex items-baseline justify-between gap-3">
+                <h2 className="font-display text-2xl tracking-wide text-white">
+                  Top tyre strategies
+                </h2>
+                <p className="text-xs text-muted">{strategy.model_version}</p>
+              </div>
+              <StrategyGrid strategies={strategy.strategies} actual={strategy.actual} />
+            </section>
           )}
         </>
       )}

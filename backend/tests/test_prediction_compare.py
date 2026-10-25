@@ -68,11 +68,13 @@ def test_classification_metrics_top3() -> None:
 
 
 def test_strategy_metrics_rate() -> None:
+    # Predicted top strategies (global) vs field actuals
     pred = [
-        {"driver_number": 1, "compounds": ["SOFT", "HARD"]},
-        {"driver_number": 2, "compounds": ["MEDIUM", "HARD"]},
+        {"rank": 1, "compounds": ["SOFT", "HARD"]},
+        {"rank": 2, "compounds": ["MEDIUM", "HARD"]},
     ]
-    actual = {1: ["HARD", "SOFT"], 2: ["SOFT", "HARD"]}
+    actual = {1: ["HARD", "SOFT"], 2: ["SOFT", "MEDIUM"], 3: ["MEDIUM", "HARD"]}
     m = strategy_metrics(pred, actual)
-    assert m["compound_matches"] == 1
-    assert m["compound_match_rate"] == 0.5
+    assert m["n"] == 3
+    assert m["compound_matches"] == 2  # drivers 1 and 3 hit top-4 compounds
+    assert m["compound_match_rate"] == 0.6667

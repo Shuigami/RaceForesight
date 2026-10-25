@@ -6,12 +6,28 @@ import {
   fetchSavedPredictions,
   formatRaceTime,
   type ActualDriverStrategy,
+  type GlobalStrategy,
   type LockStatus,
   type PredictionCompareResponse,
   type PredictionListItem,
 } from "@/lib/api";
 import { CompoundPills } from "./CompoundPills";
 import { ExplainPanel } from "./ExplainPanel";
+
+function compoundKey(compounds: string[]): string {
+  return [...compounds].map((c) => c.toUpperCase()).sort().join("|");
+}
+
+function formatGap(seconds: number): string {
+  if (seconds === 0) return "baseline";
+  const sign = seconds > 0 ? "+" : "";
+  return `${sign}${seconds.toFixed(1)}s`;
+}
+
+function compoundsInTop4(pred: GlobalStrategy[], compounds: string[]): boolean {
+  const key = compoundKey(compounds);
+  return pred.some((s) => compoundKey(s.compounds) === key);
+}
 
 function fmtWhen(iso: string | null | undefined) {
   if (!iso) return "—";
@@ -244,9 +260,9 @@ export function ResultsDashboard() {
                 ]}
               />
               <ScoreCard
-                title="Strategy compounds"
+                title="Strategy (top 4)"
                 lines={[
-                  `Match ${(metrics.strategy.compound_matches ?? 0)}/${metrics.strategy.n ?? 0}`,
+                  `Field hit ${(metrics.strategy.compound_matches ?? 0)}/${metrics.strategy.n ?? 0}`,
                   `Rate ${
                     metrics.strategy.compound_match_rate != null
                       ? `${(Number(metrics.strategy.compound_match_rate) * 100).toFixed(0)}%`
@@ -346,57 +362,46 @@ export function ResultsDashboard() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-display text-2xl tracking-wide text-white">Strategy compounds</h2>
+            <h2 className="font-display text-2xl tracking-wide text-white">Predicted strategies</h2>
             <div className="overflow-x-auto rounded-sm border border-white/10 bg-panel/80">
               <table className="min-w-full text-left text-sm">
                 <thead className="border-b border-white/10 text-[11px] uppercase tracking-[0.14em] text-muted">
                   <tr>
-                    <th className="px-3 py-2">Driver</th>
-                    <th className="px-3 py-2">Pred</th>
-                    <th className="px-3 py-2">Actual</th>
-                    <th className="px-3 py-2">Match</th>
+                    <th className="px-3 py-2">Rank</th>
+                    <th className="px-3 py-2">Compounds</th>
+                    <th className="px-3 py-2">Pit laps</th>
+                    <th className="px-3 py-2">Pred time</th>
+                    <th className="px-3 py-2">Gap</th>
+                    <th className="px-3 py-2">Field</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {compare.snapshot.strategy.drivers.map((row) => {
-                    const act = actualStrategy.get(row.driver_number);
-                    const predSet = new Set(row.compounds.map((c) => c.toUpperCase()));
-                    const actSet = new Set((act?.compounds ?? []).map((c) => c.toUpperCase()));
-                    const match =
-                      act &&
-                      predSet.size === actSet.size &&
-                      [...predSet].every((c) => actSet.has(c));
+                  {compare.snapshot.strategy.strategies.map((row) => {
+                    const fieldN = [...actualStrategy.values()].filter(
+                      (a) => compoundKey(a.compounds) === compoundKey(row.compounds),
+                    ).length;
                     return (
-                      <tr key={row.driver_number} className="border-t border-white/5">
-                        <td className="px-3 py-2 font-semibold text-white">{row.name_acronym}</td>
+                      <tr key={`${row.rank}-${row.strategy_label}`} className="border-t border-white/5">
+                        <td className="px-3 py-2 font-mono text-muted">{row.rank}</td>
                         <td className="px-3 py-2">
                           <CompoundPills compounds={row.compounds} />
-                          {row.pit_laps.length > 0 && (
-                            <span className="ml-2 text-[11px] text-muted">
-                              pit {row.pit_laps.join(", ")}
-                            </span>
-                          )}
+                          <span className="ml-2 text-[11px] text-muted">{row.stops}-stop</span>
                         </td>
-                        <td className="px-3 py-2">
-                          {act ? (
-                            <>
-                              <CompoundPills compounds={act.compounds} />
-                              {act.pit_laps.length > 0 && (
-                                <span className="ml-2 text-[11px] text-muted">
-                                  pit {act.pit_laps.join(", ")}
-                                </span>
-                              )}
-                            </>
-                          ) : (
-                            <span className="text-muted">—</span>
-                          )}
+                        <td className="px-3 py-2 font-mono text-fog">
+                          {row.pit_laps.join(", ") || "—"}
                         </td>
-                        <td
-                          className={`px-3 py-2 ${
-                            act == null ? "text-muted" : match ? "text-emerald-300" : "text-accent"
-                          }`}
-                        >
-                          {act == null ? "—" : match ? "Yes" : "No"}
+                        <td className="px-3 py-2 font-mono text-fog">
+                          {formatRaceTime(row.predicted_race_time_s)}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-fog">
+                          {formatGap(row.gap_to_best_s)}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-xs text-muted">
+                          {compare.status === "scored"
+                            ? fieldN > 0
+                              ? `${fieldN} cars`
+                              : "—"
+                            : "—"}
                         </td>
                       </tr>
                     );
@@ -405,6 +410,55 @@ export function ResultsDashboard() {
               </table>
             </div>
           </section>
+
+          {compare.actual_strategies.length > 0 && (
+            <section className="space-y-3">
+              <h2 className="font-display text-2xl tracking-wide text-white">Actual field strategies</h2>
+              <div className="overflow-x-auto rounded-sm border border-white/10 bg-panel/80">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="border-b border-white/10 text-[11px] uppercase tracking-[0.14em] text-muted">
+                    <tr>
+                      <th className="px-3 py-2">Compounds</th>
+                      <th className="px-3 py-2">Cars</th>
+                      <th className="px-3 py-2">In top 4</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(
+                      compare.actual_strategies.reduce<
+                        Record<string, { compounds: string[]; count: number }>
+                      >((acc, act) => {
+                        const key = compoundKey(act.compounds);
+                        if (!acc[key]) acc[key] = { compounds: act.compounds, count: 0 };
+                        acc[key].count += 1;
+                        return acc;
+                      }, {}),
+                    )
+                      .sort((a, b) => b[1].count - a[1].count)
+                      .map(([key, row]) => {
+                        const hit = compoundsInTop4(
+                          compare.snapshot.strategy.strategies,
+                          row.compounds,
+                        );
+                        return (
+                          <tr key={key} className="border-t border-white/5">
+                            <td className="px-3 py-2">
+                              <CompoundPills compounds={row.compounds} />
+                            </td>
+                            <td className="px-3 py-2 font-mono text-fog">{row.count}</td>
+                            <td
+                              className={`px-3 py-2 ${hit ? "text-emerald-300" : "text-accent"}`}
+                            >
+                              {hit ? "Yes" : "No"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
         </>
       )}
     </main>
