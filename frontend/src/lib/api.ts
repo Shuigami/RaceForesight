@@ -152,13 +152,43 @@ async function getJson<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function postJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { method: "POST", cache: "no-store" });
+async function postJson<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    cache: "no-store",
+    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
   if (!res.ok) {
     const detail = await res.text();
     throw new Error(detail || `Request failed (${res.status})`);
   }
   return res.json() as Promise<T>;
+}
+
+async function patchJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "PATCH",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(detail || `Request failed (${res.status})`);
+  }
+  return res.json() as Promise<T>;
+}
+
+async function deleteJson<T>(path: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, { method: "DELETE", cache: "no-store" });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(detail || `Request failed (${res.status})`);
+  }
+  if (res.status === 204) return undefined as T;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 export function fetchRaces() {
@@ -197,7 +227,22 @@ export type LockStatus =
   | "saved_after_start"
   | "awaiting_race_start";
 
-export type PredictionListItem = {
+export type PredictionMeetingListItem = {
+  meeting_key: number;
+  meeting_name: string;
+  year: number | null;
+  circuit_short_name: string | null;
+  first_saved_at: string | null;
+  saved_at: string | null;
+  race_start_at: string | null;
+  save_count: number;
+  has_actual: boolean;
+  status: "awaiting_race" | "scored";
+};
+
+export type PredictionSaveListItem = {
+  id: string;
+  name: string;
   meeting_key: number;
   meeting_name: string;
   year: number | null;
@@ -211,6 +256,8 @@ export type PredictionListItem = {
 };
 
 export type PredictionSnapshot = {
+  id: string;
+  name: string;
   meeting: MeetingSummary;
   race_start_at: string | null;
   first_saved_at: string;
@@ -246,15 +293,35 @@ export type PredictionCompareResponse = {
 };
 
 export function fetchSavedPredictions() {
-  return getJson<PredictionListItem[]>("/api/predictions");
+  return getJson<PredictionMeetingListItem[]>("/api/predictions");
 }
 
-export function savePredictions(meetingKey: number) {
-  return postJson<PredictionCompareResponse>(`/api/predictions/${meetingKey}/save`);
+export function fetchMeetingSaves(meetingKey: number) {
+  return getJson<PredictionSaveListItem[]>(`/api/predictions/${meetingKey}/saves`);
 }
 
-export function fetchPredictionCompare(meetingKey: number) {
-  return getJson<PredictionCompareResponse>(`/api/predictions/${meetingKey}/compare`);
+export function savePredictions(meetingKey: number, name?: string) {
+  return postJson<PredictionCompareResponse>(
+    `/api/predictions/${meetingKey}/save`,
+    name ? { name } : undefined,
+  );
+}
+
+export function fetchPredictionCompare(meetingKey: number, saveId: string) {
+  return getJson<PredictionCompareResponse>(
+    `/api/predictions/${meetingKey}/saves/${saveId}/compare`,
+  );
+}
+
+export function renamePredictionSave(meetingKey: number, saveId: string, name: string) {
+  return patchJson<PredictionSaveListItem>(
+    `/api/predictions/${meetingKey}/saves/${saveId}`,
+    { name },
+  );
+}
+
+export function deletePredictionSave(meetingKey: number, saveId: string) {
+  return deleteJson<{ ok: boolean }>(`/api/predictions/${meetingKey}/saves/${saveId}`);
 }
 
 export function formatRaceTime(seconds: number): string {

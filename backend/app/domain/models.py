@@ -177,6 +177,8 @@ class SavedStrategySlice(BaseModel):
 
 
 class PredictionSnapshot(BaseModel):
+    id: str = ""
+    name: str = ""
     meeting: MeetingSummary
     race_start_at: str | None = None
     first_saved_at: str
@@ -187,7 +189,22 @@ class PredictionSnapshot(BaseModel):
     strategy: SavedStrategySlice
 
 
-class PredictionListItem(BaseModel):
+class PredictionMeetingListItem(BaseModel):
+    meeting_key: int
+    meeting_name: str
+    year: int | None = None
+    circuit_short_name: str | None = None
+    first_saved_at: str | None = None
+    saved_at: str | None = None
+    race_start_at: str | None = None
+    save_count: int = 0
+    has_actual: bool = False
+    status: str  # awaiting_race | scored
+
+
+class PredictionSaveListItem(BaseModel):
+    id: str
+    name: str
     meeting_key: int
     meeting_name: str
     year: int | None = None
@@ -198,6 +215,10 @@ class PredictionListItem(BaseModel):
     has_actual: bool = False
     lock_status: str
     status: str  # awaiting_race | scored
+
+
+class PredictionSaveNameBody(BaseModel):
+    name: str | None = None
 
 
 class ActualFinishRow(BaseModel):

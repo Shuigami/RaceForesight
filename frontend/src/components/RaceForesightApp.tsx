@@ -103,10 +103,7 @@ export function RaceForesightApp() {
     setError(null);
     try {
       const data = await savePredictions(meetingKey);
-      const snap = data.snapshot;
-      const overwritten = snap.first_saved_at !== snap.saved_at;
-      const when = new Date(snap.saved_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      setSaveMsg(overwritten ? `Overwritten · ${when}` : `Saved · ${when}`);
+      setSaveMsg(`Saved · ${data.snapshot.name || "ok"}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
