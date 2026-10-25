@@ -21,7 +21,7 @@ class ClassificationPredictor:
     This page answers: who is likely to finish ahead of whom.
     """
 
-    VERSION = "ranking-pairwise-v1"
+    VERSION = RankingModel.VERSION
 
     def __init__(self, simulator: StrategySimulator | None = None) -> None:
         self.simulator = simulator or StrategySimulator()
@@ -90,7 +90,7 @@ class ClassificationPredictor:
                 "Finishing order from pairwise ranker (grid + form + pace). "
                 "Not a re-sort of Strategy optimal tyre times."
             )
-            version = self.VERSION
+            version = str(self.ranker.meta.get("version") or self.VERSION)
         else:
             lap_model = self.simulator.model
             if lap_model.model is None and lap_model.is_ready:

@@ -140,7 +140,7 @@ class PredictedFinish(BaseModel):
 class ClassificationResponse(BaseModel):
     meeting: MeetingSummary
     standings: list[PredictedFinish]
-    model_version: str = "ranking-pairwise-v1"
+    model_version: str = "ranking-pairwise-v2"
     generated_at: str
     note: str = (
         "Finishing order from pairwise ranker (grid + form + pace), "
