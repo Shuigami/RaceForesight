@@ -1,19 +1,20 @@
 {
-  "generated_at": "2026-10-18T16:21:08.374596+00:00",
+  "generated_at": "2026-10-25T22:22:00+00:00",
   "models": [
     {
       "name": "Lap-time XGBoost",
       "kind": "lap_time",
-      "version": "xgboost-lap-v2",
+      "version": "xgboost-lap-v3",
       "primary": true,
       "metrics": {
-        "mae_s": 1.6696,
-        "rmse_s": 2.0947,
-        "n_train": 60718,
-        "n_test": 15180,
+        "mae_s": 1.3138,
+        "rmse_s": 1.7329,
+        "n_train": 60060,
+        "n_test": 15015,
+        "best_iteration": 39,
         "target": "circuit_residual"
       },
-      "description": "Primary lap-time model (circuit baseline + residual). Includes compound×age / circuit×compound, stint features, wet compounds, SC downweight."
+      "description": "Primary lap-time model (circuit baseline + residual). Includes compound×age / circuit×compound, stint features, wet compounds, SC downweight. Tuned shallow trees + early stopping."
     },
     {
       "name": "Lap-time Random Forest",
@@ -33,45 +34,42 @@
     {
       "name": "Classification (pairwise ranker)",
       "kind": "classification",
-      "version": "ranking-pairwise-v1",
+      "version": "ranking-pairwise-v2",
       "primary": true,
       "metrics": {
         "races_evaluated": 8,
         "eval_protocol": "leave_one_race_out",
-        "spearman": 0.8154,
-        "kendall_tau": 0.6604,
-        "top3_hit_rate": 0.6667,
-        "mae_position": 2.2554
+        "spearman": 0.8589,
+        "kendall_tau": 0.72,
+        "top3_hit_rate": 0.7917,
+        "mae_position": 1.9233
       },
-      "description": "Leave-one-race-out backtest of pairwise XGBRanker vs OpenF1 session_result. Features: qualifying grid, recent/circuit form, shrunk pace, team form, rain."
+      "description": "Leave-one-race-out backtest of pairwise XGBRanker vs OpenF1 session_result. Features: qualifying grid, recent/circuit form, shrunk pace, team form, rain. Tuned shallow pairwise (depth 3)."
     },
     {
       "name": "Race time (XGBoost)",
       "kind": "race_time",
-      "version": "race-time-xgb-v1",
+      "version": "race-time-xgb-v2",
       "primary": true,
       "metrics": {
-        "mae_s": 540.8912,
-        "rmse_s": 909.0805,
-        "n_train": 389,
-        "n_test": 98,
-        "n_races": 35,
-        "target": "race_duration_s",
+        "mae_s": 585.2847,
+        "rmse_s": 908.6972,
+        "within_race_mae_s": 14.6767,
+        "n_train": 484,
+        "n_test": 121,
+        "n_races": 44,
+        "best_iteration": 170,
+        "target": "within_race_gap_plus_circuit_duration",
         "eval_protocol": "temporal_holdout"
       },
-      "description": "Predicts total race duration vs OpenF1 session_result.duration. Features: grid, form, pace, race distance, pit loss, pace×distance proxy. Re-run evaluate for leave-one-race-out scores."
+      "description": "Within-race gaps + circuit duration median. Absolute MAE capped by SC/red flags (~7–10 min); within_race_mae_s is the driver-relative metric. Features: grid, form, pace, distance, pit loss."
     }
   ],
   "evaluation_races": 8,
   "notes": [
-    "LOO Spa-Francorchamps session=11334: spearman=0.946 mae_pos=1.47",
-    "LOO Hungaroring session=11342: spearman=0.874 mae_pos=2.21",
-    "LOO Zandvoort session=11353: spearman=0.831 mae_pos=2.12",
-    "LOO Monza session=11361: spearman=0.835 mae_pos=2.32",
-    "LOO Madring session=11369: spearman=0.884 mae_pos=2.11",
-    "LOO Baku session=11377: spearman=0.656 mae_pos=2.62",
-    "LOO Kuala Lumpur session=11731: spearman=0.606 mae_pos=3.40",
-    "LOO Singapore session=11388: spearman=0.891 mae_pos=1.79",
-    "Race-time metrics from train temporal holdout (35 races); run POST /api/models/evaluate for LOO."
+    "Lap-time v3: shallow trees + early stopping (MAE 1.31s vs 1.67s).",
+    "Ranker v2 LOO (8 races): spearman=0.859 kendall=0.72 top3=0.79 mae_pos=1.92.",
+    "Race-time v2: absolute MAE ~585s is SC-limited; within-race MAE ~14.7s is the useful signal.",
+    "Some 2026 session_result calls return 401 from OpenF1 — those races skipped."
   ]
 }

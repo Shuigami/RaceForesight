@@ -1,11 +1,13 @@
 {
-  "version": "race-time-xgb-v1",
+  "version": "race-time-xgb-v2",
   "device": "cuda",
-  "n_races": 35,
-  "n_train": 389,
-  "n_test": 98,
-  "mae_s": 540.8912,
-  "rmse_s": 909.0805,
+  "n_races": 44,
+  "n_train": 484,
+  "n_test": 121,
+  "mae_s": 585.2847,
+  "rmse_s": 908.6972,
+  "within_race_mae_s": 14.6767,
+  "best_iteration": 170,
   "feature_columns": [
     "grid_position",
     "recent_form",
@@ -21,5 +23,5 @@
     "pit_loss",
     "pace_race_proxy"
   ],
-  "target": "race_duration_s"
+  "target": "within_race_gap_plus_circuit_duration"
 }
