@@ -20,7 +20,7 @@ export const METRIC_GLOSSARY: Record<string, MetricInfo> = {
     detail:
       "Like MAE, but large mistakes are penalised more (errors are squared before averaging). Sensitive to outliers.",
     goodWhen: "Lower is better. Usually a bit higher than MAE.",
-  }
+  },
   r2: {
     label: "R²",
     short: "Coefficient of determination",
