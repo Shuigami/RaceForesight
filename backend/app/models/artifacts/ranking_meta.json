@@ -1,5 +1,6 @@
 {
-  "version": "ranking-pairwise-v1",
+  "version": "ranking-pairwise-v2",
+  "device": "cuda",
   "n_races": 52,
   "n_rows": 923,
   "feature_columns": [

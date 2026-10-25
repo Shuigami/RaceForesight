@@ -30,7 +30,7 @@ RANK_FEATURE_COLUMNS = [
 class RankingModel:
     MODEL_FILE = "ranking_xgb.joblib"
     META_FILE = "ranking_meta.json"
-    VERSION = "ranking-pairwise-v1"
+    VERSION = "ranking-pairwise-v2"
 
     def __init__(self, artifact_dir: Path | None = None) -> None:
         self.artifact_dir = artifact_dir or settings.model_dir
@@ -120,14 +120,17 @@ class RankingModel:
         y = data["relevance"].to_numpy(dtype=np.float32)
 
         device = xgb_device()
+        # Tuned 2026-10 LOO: shallow pairwise beats deeper trees on mae/top3; ndcg hurt overall order.
         self.model = XGBRanker(
             objective="rank:pairwise",
-            n_estimators=250,
-            max_depth=5,
-            learning_rate=0.06,
-            subsample=0.9,
-            colsample_bytree=0.9,
-            min_child_weight=2,
+            n_estimators=150,
+            max_depth=3,
+            learning_rate=0.1,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            min_child_weight=1,
+            reg_lambda=1.0,
+            reg_alpha=0.5,
             device=device,
             n_jobs=4,
             random_state=42,
