@@ -25,9 +25,9 @@ def _sample_payload(**overrides):
         "first_saved_at": "2026-02-28T10:00:00Z",
         "saved_at": "2026-02-28T10:00:00Z",
         "model_versions": {
-            "classification": "c1",
-            "race_time": "r1",
-            "strategy": "s1",
+            "classification": {"name": "Classification (pairwise ranker)", "version": "c1"},
+            "race_time": {"name": "Race time (XGBoost)", "version": "r1"},
+            "strategy": {"name": "Lap-time XGBoost", "version": "s1"},
         },
         "classification": {"standings": [], "note": ""},
         "race_time": {"standings": [], "note": ""},

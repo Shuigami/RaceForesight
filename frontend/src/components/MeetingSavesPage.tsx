@@ -150,6 +150,23 @@ function SaveRow({
           </span>
           <span className="font-mono text-[11px] text-muted">{fmtWhen(item.saved_at)}</span>
         </div>
+        {item.model_versions && (
+          <p className="px-1 text-[11px] leading-relaxed text-fog">
+            {(
+              [
+                ["Class.", item.model_versions.classification],
+                ["Race time", item.model_versions.race_time],
+                ["Strategy", item.model_versions.strategy],
+              ] as const
+            ).map(([label, ref]) => (
+              <span key={label} className="mr-3 inline-block">
+                <span className="text-muted">{label}</span>{" "}
+                <span className="text-white/90">{ref.name}</span>{" "}
+                <span className="font-mono text-muted">{ref.version}</span>
+              </span>
+            ))}
+          </p>
+        )}
         {error && <p className="px-1 text-xs text-accent">{error}</p>}
       </div>
       <div className="flex shrink-0 items-center gap-2">

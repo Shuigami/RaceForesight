@@ -15,8 +15,12 @@ from app.domain.models import (
     PredictionSaveNameBody,
     PredictionSnapshot,
     SavedClassificationSlice,
+    SavedModelRef,
     SavedStrategySlice,
 )
+from app.models.lap_time import LapTimeModel
+from app.models.race_time import RaceTimeModel
+from app.models.ranking import RankingModel
 from app.predictions.compare import (
     classification_metrics,
     compute_lock_status,
@@ -116,6 +120,12 @@ def _enrich_save(raw: dict) -> PredictionSaveListItem:
         saved_at=raw.get("saved_at"),
         race_start_at=raw.get("race_start_at"),
     )
+    model_versions = None
+    if raw.get("model_versions"):
+        try:
+            model_versions = PredictionModelVersions.model_validate(raw["model_versions"])
+        except Exception:
+            model_versions = None
     return PredictionSaveListItem(
         id=str(raw["id"]),
         name=str(raw.get("name") or raw["id"]),
@@ -131,6 +141,7 @@ def _enrich_save(raw: dict) -> PredictionSaveListItem:
         has_actual=has_actual,
         lock_status=lock,
         status="scored" if has_actual else "awaiting_race",
+        model_versions=model_versions,
     )
 
 
@@ -167,9 +178,18 @@ def save_predictions(
             first_saved_at=now,
             saved_at=now,
             model_versions=PredictionModelVersions(
-                classification=classification.model_version,
-                race_time=race_time.model_version,
-                strategy=strategy.model_version,
+                classification=SavedModelRef(
+                    name=RankingModel.DISPLAY_NAME,
+                    version=classification.model_version,
+                ),
+                race_time=SavedModelRef(
+                    name=RaceTimeModel.DISPLAY_NAME,
+                    version=race_time.model_version,
+                ),
+                strategy=SavedModelRef(
+                    name=LapTimeModel.DISPLAY_NAME,
+                    version=strategy.model_version,
+                ),
             ),
             classification=SavedClassificationSlice(
                 standings=classification.standings,

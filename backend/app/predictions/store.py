@@ -103,6 +103,7 @@ def list_saves(meeting_key: int) -> list[dict[str, Any]]:
                 "first_saved_at": data.get("first_saved_at"),
                 "saved_at": data.get("saved_at"),
                 "race_start_at": data.get("race_start_at"),
+                "model_versions": data.get("model_versions"),
             }
         )
     out.sort(key=lambda item: item.get("saved_at") or "", reverse=True)

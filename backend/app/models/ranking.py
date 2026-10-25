@@ -31,6 +31,7 @@ class RankingModel:
     MODEL_FILE = "ranking_xgb.joblib"
     META_FILE = "ranking_meta.json"
     VERSION = "ranking-pairwise-v2"
+    DISPLAY_NAME = "Classification (pairwise ranker)"
 
     def __init__(self, artifact_dir: Path | None = None) -> None:
         self.artifact_dir = artifact_dir or settings.model_dir

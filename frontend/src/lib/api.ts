@@ -272,6 +272,17 @@ export type PredictionMeetingListItem = {
   status: "awaiting_race" | "scored";
 };
 
+export type SavedModelRef = {
+  name: string;
+  version: string;
+};
+
+export type PredictionModelVersions = {
+  classification: SavedModelRef;
+  race_time: SavedModelRef;
+  strategy: SavedModelRef;
+};
+
 export type PredictionSaveListItem = {
   id: string;
   name: string;
@@ -287,6 +298,7 @@ export type PredictionSaveListItem = {
   has_actual: boolean;
   lock_status: LockStatus;
   status: "awaiting_race" | "scored";
+  model_versions?: PredictionModelVersions | null;
 };
 
 export type PredictionSnapshot = {
@@ -296,11 +308,7 @@ export type PredictionSnapshot = {
   race_start_at: string | null;
   first_saved_at: string;
   saved_at: string;
-  model_versions: {
-    classification: string;
-    race_time: string;
-    strategy: string;
-  };
+  model_versions: PredictionModelVersions;
   classification: { standings: PredictedFinish[]; note: string };
   race_time: { standings: PredictedFinish[]; note: string };
   strategy: { strategies: GlobalStrategy[] };

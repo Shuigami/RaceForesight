@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class MeetingSummary(BaseModel):
@@ -164,10 +166,48 @@ class ModelsMetricsResponse(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+def infer_saved_model_name(section: str, version: str) -> str:
+    """Best-effort display name when older saves only stored a version string."""
+    v = (version or "").lower()
+    if section == "classification" or "rank" in v:
+        if "pace-grid" in v:
+            return "Pace+grid heuristic"
+        return "Classification (pairwise ranker)"
+    if section == "race_time" or "race-time" in v:
+        if "fallback" in v:
+            return "Pace×distance fallback"
+        return "Race time (XGBoost)"
+    if "rf-lap" in v:
+        return "Lap-time Random Forest"
+    return "Lap-time XGBoost"
+
+
+class SavedModelRef(BaseModel):
+    name: str
+    version: str
+
+
+def _coerce_saved_model_ref(section: str, value: Any) -> Any:
+    if isinstance(value, str):
+        return {"name": infer_saved_model_name(section, value), "version": value}
+    if isinstance(value, dict):
+        version = str(value.get("version") or "")
+        name = str(value.get("name") or "").strip()
+        if not name and version:
+            name = infer_saved_model_name(section, version)
+        return {"name": name or infer_saved_model_name(section, version), "version": version}
+    return value
+
+
 class PredictionModelVersions(BaseModel):
-    classification: str
-    race_time: str
-    strategy: str
+    classification: SavedModelRef
+    race_time: SavedModelRef
+    strategy: SavedModelRef
+
+    @field_validator("classification", "race_time", "strategy", mode="before")
+    @classmethod
+    def coerce_legacy_version_string(cls, value: Any, info) -> Any:
+        return _coerce_saved_model_ref(str(info.field_name), value)
 
 
 class SavedClassificationSlice(BaseModel):
@@ -222,6 +262,7 @@ class PredictionSaveListItem(BaseModel):
     has_actual: bool = False
     lock_status: str
     status: str  # awaiting_race | scored
+    model_versions: PredictionModelVersions | None = None
 
 
 class PredictionSaveNameBody(BaseModel):

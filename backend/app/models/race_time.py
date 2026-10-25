@@ -47,6 +47,7 @@ class RaceTimeModel:
     META_FILE = "race_time_meta.json"
     DURATION_BASELINES_FILE = "race_time_circuit_baselines.json"
     VERSION = "race-time-xgb-v2"
+    DISPLAY_NAME = "Race time (XGBoost)"
 
     def __init__(self, artifact_dir: Path | None = None) -> None:
         self.artifact_dir = artifact_dir or settings.model_dir

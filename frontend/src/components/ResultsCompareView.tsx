@@ -158,6 +158,22 @@ export function ResultsCompareView({
         </div>
       </div>
 
+      <div className="grid gap-2 border border-white/10 bg-panel/60 px-4 py-3 text-xs sm:grid-cols-3">
+        {(
+          [
+            ["Classification", snap.model_versions.classification],
+            ["Race time", snap.model_versions.race_time],
+            ["Strategy", snap.model_versions.strategy],
+          ] as const
+        ).map(([label, ref]) => (
+          <div key={label}>
+            <p className="text-[10px] uppercase tracking-[0.16em] text-muted">{label}</p>
+            <p className="mt-1 text-white">{ref.name}</p>
+            <p className="font-mono text-[11px] text-muted">{ref.version}</p>
+          </div>
+        ))}
+      </div>
+
       {compare.status === "scored" && metrics && (
         <section className="grid gap-3 sm:grid-cols-3">
           <ScoreCard

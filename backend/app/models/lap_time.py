@@ -27,6 +27,7 @@ class LapTimeModel:
     META_FILE = "lap_time_meta.json"
     BASELINES_FILE = "circuit_baselines.json"
     VERSION = "xgboost-lap-v3"
+    DISPLAY_NAME = "Lap-time XGBoost"
 
     def __init__(self, artifact_dir: Path | None = None) -> None:
         self.artifact_dir = artifact_dir or settings.model_dir
