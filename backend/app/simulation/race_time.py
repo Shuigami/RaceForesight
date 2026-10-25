@@ -125,6 +125,11 @@ class RaceTimePredictor:
                     full_name=str(row.get("full_name") or "Unknown"),
                     team_name=str(row.get("team_name") or "Unknown"),
                     team_colour=str(row["team_colour"]) if row.get("team_colour") else None,
+                    headshot_url=(
+                        str(row["headshot_url"])
+                        if row.get("headshot_url") and str(row.get("headshot_url")) not in ("", "nan", "None")
+                        else None
+                    ),
                     estimated_race_time_s=round(race_time, 3),
                     gap_to_leader_s=round(race_time - leader, 3),
                     strategy_label="race-time model",
@@ -158,6 +163,11 @@ class RaceTimePredictor:
                     full_name=str(driver.get("full_name") or "Unknown"),
                     team_name=str(driver.get("team_name") or "Unknown"),
                     team_colour=str(driver["team_colour"]) if driver.get("team_colour") else None,
+                    headshot_url=(
+                        str(driver["headshot_url"])
+                        if driver.get("headshot_url") and str(driver.get("headshot_url")) not in ("", "nan", "None")
+                        else None
+                    ),
                     estimated_race_time_s=round(race_time, 3),
                     gap_to_leader_s=round(race_time - leader, 3),
                     strategy_label="pace×distance fallback",

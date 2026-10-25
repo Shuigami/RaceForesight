@@ -78,14 +78,26 @@ def _load_actuals(meeting_key: int):
     return has_actual, positions, durations, actual_strategies
 
 
+def _meeting_art(meeting_key: int) -> tuple[str | None, str | None]:
+    """Live OpenF1 circuit/flag URLs (fills gaps on older saves)."""
+    try:
+        m = _pipeline().get_meeting(meeting_key)
+        return m.circuit_image, m.country_flag
+    except Exception:
+        return None, None
+
+
 def _enrich_meeting(raw: dict) -> PredictionMeetingListItem:
     mk = int(raw["meeting_key"])
     has_actual = bool(_finishing_results(mk)[0])
+    live_circuit, live_flag = _meeting_art(mk)
     return PredictionMeetingListItem(
         meeting_key=mk,
         meeting_name=str(raw.get("meeting_name") or mk),
         year=raw.get("year"),
         circuit_short_name=raw.get("circuit_short_name"),
+        circuit_image=raw.get("circuit_image") or live_circuit,
+        country_flag=raw.get("country_flag") or live_flag,
         first_saved_at=raw.get("first_saved_at"),
         saved_at=raw.get("saved_at"),
         race_start_at=raw.get("race_start_at"),
@@ -98,6 +110,7 @@ def _enrich_meeting(raw: dict) -> PredictionMeetingListItem:
 def _enrich_save(raw: dict) -> PredictionSaveListItem:
     mk = int(raw["meeting_key"])
     has_actual = bool(_finishing_results(mk)[0])
+    live_circuit, live_flag = _meeting_art(mk)
     lock = compute_lock_status(
         first_saved_at=raw.get("first_saved_at"),
         saved_at=raw.get("saved_at"),
@@ -110,6 +123,8 @@ def _enrich_save(raw: dict) -> PredictionSaveListItem:
         meeting_name=str(raw.get("meeting_name") or mk),
         year=raw.get("year"),
         circuit_short_name=raw.get("circuit_short_name"),
+        circuit_image=raw.get("circuit_image") or live_circuit,
+        country_flag=raw.get("country_flag") or live_flag,
         first_saved_at=raw.get("first_saved_at"),
         saved_at=raw.get("saved_at"),
         race_start_at=raw.get("race_start_at"),
@@ -220,6 +235,8 @@ def rename_meeting_save(
             "meeting_name": meeting.get("meeting_name") or key,
             "year": meeting.get("year"),
             "circuit_short_name": meeting.get("circuit_short_name"),
+            "circuit_image": meeting.get("circuit_image"),
+            "country_flag": meeting.get("country_flag"),
             "first_saved_at": raw.get("first_saved_at"),
             "saved_at": raw.get("saved_at"),
             "race_start_at": raw.get("race_start_at"),
@@ -240,6 +257,18 @@ def delete_meeting_save(meeting_key: int, save_id: str) -> dict[str, bool]:
 
 def _compare_from_snapshot(snapshot: PredictionSnapshot) -> PredictionCompareResponse:
     has_actual, positions, durations, actual_strategies = _load_actuals(snapshot.meeting.meeting_key)
+    live_circuit, live_flag = _meeting_art(snapshot.meeting.meeting_key)
+    if live_circuit or live_flag:
+        snapshot = snapshot.model_copy(
+            update={
+                "meeting": snapshot.meeting.model_copy(
+                    update={
+                        "circuit_image": snapshot.meeting.circuit_image or live_circuit,
+                        "country_flag": snapshot.meeting.country_flag or live_flag,
+                    }
+                )
+            }
+        )
     lock = compute_lock_status(
         first_saved_at=snapshot.first_saved_at,
         saved_at=snapshot.saved_at,

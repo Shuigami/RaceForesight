@@ -16,6 +16,16 @@ from app.domain.models import ActualDriverStrategy, MeetingSummary, StintPlan
 _DEFAULT_MEETING_LOOKBACK = pd.Timedelta(days=4)
 
 
+def _media_url(value: object) -> str | None:
+    """OpenF1 sometimes leaves spaces in path segments (breaks <img>/Next)."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    url = str(value).strip()
+    if not url or url.lower() in ("nan", "none"):
+        return None
+    return url.replace(" ", "%20")
+
+
 def pick_default_meeting_key(
     meetings: pd.DataFrame,
     *,
@@ -145,6 +155,8 @@ class RaceDataPipeline:
                         str(row.get("circuit_short_name") or ""),
                         str(row.get("meeting_name") or row.get("meeting_official_name") or ""),
                     ),
+                    circuit_image=_media_url(row.get("circuit_image")),
+                    country_flag=_media_url(row.get("country_flag")),
                 )
             )
         return out
@@ -357,7 +369,18 @@ class RaceDataPipeline:
             laps["stint_lap"] = 1
 
         if not drivers.empty:
-            driver_cols = [c for c in ["driver_number", "name_acronym", "full_name", "team_name", "team_colour"] if c in drivers.columns]
+            driver_cols = [
+                c
+                for c in [
+                    "driver_number",
+                    "name_acronym",
+                    "full_name",
+                    "team_name",
+                    "team_colour",
+                    "headshot_url",
+                ]
+                if c in drivers.columns
+            ]
             drivers_u = drivers[driver_cols].drop_duplicates(subset=["driver_number"])
             laps = laps.merge(drivers_u, on="driver_number", how="left")
 
@@ -400,6 +423,7 @@ class RaceDataPipeline:
             "full_name",
             "team_name",
             "team_colour",
+            "headshot_url",
             "lap_number",
             "lap_duration",
             "compound",

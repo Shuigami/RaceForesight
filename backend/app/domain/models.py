@@ -12,6 +12,8 @@ class MeetingSummary(BaseModel):
     date_start: str | None = None
     is_default: bool = False
     race_laps: int = 56
+    circuit_image: str | None = None
+    country_flag: str | None = None
 
 
 class StintPlan(BaseModel):
@@ -128,6 +130,7 @@ class PredictedFinish(BaseModel):
     full_name: str
     team_name: str
     team_colour: str | None = None
+    headshot_url: str | None = None
     estimated_race_time_s: float | None = None
     gap_to_leader_s: float | None = None
     strategy_label: str | None = None
@@ -194,6 +197,8 @@ class PredictionMeetingListItem(BaseModel):
     meeting_name: str
     year: int | None = None
     circuit_short_name: str | None = None
+    circuit_image: str | None = None
+    country_flag: str | None = None
     first_saved_at: str | None = None
     saved_at: str | None = None
     race_start_at: str | None = None
@@ -209,6 +214,8 @@ class PredictionSaveListItem(BaseModel):
     meeting_name: str
     year: int | None = None
     circuit_short_name: str | None = None
+    circuit_image: str | None = None
+    country_flag: str | None = None
     first_saved_at: str | None = None
     saved_at: str | None = None
     race_start_at: str | None = None

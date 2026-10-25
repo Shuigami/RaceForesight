@@ -81,6 +81,7 @@ class RankingModel:
                     "full_name": str(row.get("full_name") or "Unknown"),
                     "team_name": team,
                     "team_colour": row.get("team_colour"),
+                    "headshot_url": row.get("headshot_url"),
                     "grid_position": float(grid_pos) if grid_pos is not None else 11.0,
                     "grid_missing": 0.0 if grid_pos is not None else 1.0,
                     "recent_form": recent,
