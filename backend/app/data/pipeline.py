@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 import pandas as pd
 
@@ -11,6 +12,8 @@ from app.clients.openf1 import OpenF1Client
 from app.config import settings
 from app.domain.circuit_laps import resolve_race_laps
 from app.domain.models import ActualDriverStrategy, MeetingSummary, StintPlan
+
+ProgressCallback = Callable[[str, int, int], None]
 
 # OpenF1 meeting date_start is usually Fri; race is ~Sun. Stay "next" through race day, flip Monday.
 _RACE_DAY_OFFSET = pd.Timedelta(days=2)
@@ -262,6 +265,8 @@ class RaceDataPipeline:
         max_sessions: int | None = None,
         *,
         completed_only: bool = True,
+        on_progress: ProgressCallback | None = None,
+        progress_stage: str = "pace",
     ) -> pd.DataFrame:
         sessions = self.list_race_sessions(years)
         if sessions.empty:
@@ -275,12 +280,15 @@ class RaceDataPipeline:
         if max_sessions:
             sessions = sessions.tail(max_sessions)
 
+        total = len(sessions)
         frames: list[pd.DataFrame] = []
-        for _, sess in sessions.iterrows():
+        for i, (_, sess) in enumerate(sessions.iterrows(), start=1):
             session_key = int(sess["session_key"])
             meeting_key = int(sess["meeting_key"])
             data = self.ingest_session(session_key)
             if data["laps"].empty:
+                if on_progress:
+                    on_progress(progress_stage, i, total)
                 continue
             lap_df = self._join_lap_features(
                 data,
@@ -291,6 +299,8 @@ class RaceDataPipeline:
             )
             if not lap_df.empty:
                 frames.append(lap_df)
+            if on_progress:
+                on_progress(progress_stage, i, total)
         if not frames:
             return pd.DataFrame()
         return pd.concat(frames, ignore_index=True)
@@ -518,6 +528,8 @@ class RaceDataPipeline:
         *,
         exclude_session_key: int | None = None,
         max_sessions: int | None = 80,
+        on_progress: ProgressCallback | None = None,
+        progress_stage: str = "history",
     ) -> pd.DataFrame:
         """Completed race finishing positions for form features."""
         sessions = self.list_race_sessions(years)
@@ -533,14 +545,19 @@ class RaceDataPipeline:
         if max_sessions:
             sessions = sessions.tail(max_sessions)
 
+        total = len(sessions)
         rows: list[dict] = []
-        for _, sess in sessions.iterrows():
+        for i, (_, sess) in enumerate(sessions.iterrows(), start=1):
             session_key = int(sess["session_key"])
             try:
                 result = self.client.session_result(session_key)
             except Exception:
+                if on_progress:
+                    on_progress(progress_stage, i, total)
                 continue
             if result.empty or "position" not in result.columns:
+                if on_progress:
+                    on_progress(progress_stage, i, total)
                 continue
             weather = self.ingest_session(session_key).get("weather", pd.DataFrame())
             rainfall = (
@@ -566,4 +583,6 @@ class RaceDataPipeline:
                         "rainfall": rainfall,
                     }
                 )
+            if on_progress:
+                on_progress(progress_stage, i, total)
         return pd.DataFrame(rows)

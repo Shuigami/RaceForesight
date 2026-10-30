@@ -166,6 +166,32 @@ class ModelsMetricsResponse(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class TrainModelProgress(BaseModel):
+    status: str  # pending | queued | running | done | error
+    stage: str | None = None
+    current: int = 0
+    total: int = 0
+    error: str | None = None
+
+
+class TrainJobRequest(BaseModel):
+    targets: list[str] = Field(default_factory=lambda: ["lap_time", "classification", "race_time"])
+    years: str | None = None
+    max_sessions: int | None = Field(default=None, ge=4, le=120)
+
+
+class TrainJobStatus(BaseModel):
+    job_id: str
+    status: str
+    targets: list[str]
+    years: list[int] = Field(default_factory=list)
+    max_sessions: int | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+    error: str | None = None
+    models: dict[str, TrainModelProgress] = Field(default_factory=dict)
+
+
 def infer_saved_model_name(section: str, version: str) -> str:
     """Best-effort display name when older saves only stored a version string."""
     v = (version or "").lower()

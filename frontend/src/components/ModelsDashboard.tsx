@@ -3,9 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchModelMetrics,
+  fetchTrainStatus,
   runModelEvaluation,
+  startModelTrain,
   type ModelScore,
   type ModelsMetricsResponse,
+  type TrainJobStatus,
+  type TrainModelProgress,
+  type TrainTarget,
 } from "@/lib/api";
 import { METRIC_GLOSSARY, metricInfo } from "@/lib/metricGlossary";
 import { ExplainPanel } from "./ExplainPanel";
@@ -63,12 +68,92 @@ function defaultSelection(models: ModelScore[]): { name: string; version: string
   return { name: primary.name, version: versions[0] };
 }
 
+function stageLabel(stage: string | null | undefined): string {
+  switch (stage) {
+    case "history":
+      return "History";
+    case "pace":
+      return "Pace ingest";
+    case "label":
+      return "Label races";
+    case "fit":
+      return "Fitting";
+    case "done":
+      return "Done";
+    case "starting":
+      return "Starting";
+    default:
+      return stage || "Idle";
+  }
+}
+
+function TrainBar({
+  progress,
+  busy,
+  onTrain,
+}: {
+  progress: TrainModelProgress | undefined;
+  busy: boolean;
+  onTrain: () => void;
+}) {
+  const status = progress?.status ?? "pending";
+  const total = progress?.total ?? 0;
+  const current = progress?.current ?? 0;
+  const pct =
+    status === "done"
+      ? 100
+      : total > 0
+        ? Math.min(100, Math.round((current / total) * 100))
+        : status === "running" || status === "queued"
+          ? 4
+          : 0;
+  const detail =
+    status === "error"
+      ? progress?.error || "Train failed"
+      : status === "done"
+        ? "Trained"
+        : status === "pending"
+          ? "Not in this job"
+          : `${stageLabel(progress?.stage)}${total > 0 ? ` · ${current}/${total}` : ""}`;
+
+  return (
+    <div className="mt-5 border-t border-white/10 pt-4">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Train</p>
+        <button
+          type="button"
+          onClick={onTrain}
+          disabled={busy}
+          className="border border-white/20 px-3 py-1.5 text-[10px] uppercase tracking-[0.14em] text-white transition hover:border-accent/50 hover:bg-accent/10 disabled:opacity-40"
+        >
+          Train this
+        </button>
+      </div>
+      <div className="h-2 overflow-hidden border border-white/10 bg-ink-900">
+        <div
+          className={`h-full transition-[width] duration-300 ${
+            status === "error" ? "bg-accent/80" : status === "done" ? "bg-emerald-500/80" : "bg-accent/70"
+          }`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="mt-1.5 font-mono text-[11px] text-fog">{detail}</p>
+    </div>
+  );
+}
+
 function ModelSection({
   kind,
   models,
+  trainProgress,
+  trainBusy,
+  onTrain,
 }: {
   kind: (typeof SECTION_ORDER)[number];
   models: ModelScore[];
+  trainProgress: TrainModelProgress | undefined;
+  trainBusy: boolean;
+  onTrain: () => void;
 }) {
   const modelNames = useMemo(() => {
     const names = [...new Set(models.map((m) => m.name))];
@@ -187,6 +272,8 @@ function ModelSection({
           </dl>
         </>
       )}
+
+      <TrainBar progress={trainProgress} busy={trainBusy} onTrain={onTrain} />
     </article>
   );
 }
@@ -195,7 +282,10 @@ export function ModelsDashboard() {
   const [data, setData] = useState<ModelsMetricsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [evaluating, setEvaluating] = useState(false);
+  const [trainJob, setTrainJob] = useState<TrainJobStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const trainActive = trainJob?.status === "queued" || trainJob?.status === "running";
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -214,6 +304,27 @@ export function ModelsDashboard() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    void fetchTrainStatus()
+      .then((job) => setTrainJob(job))
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!trainActive) return;
+    const id = window.setInterval(() => {
+      void fetchTrainStatus()
+        .then((job) => {
+          setTrainJob(job);
+          if (job && (job.status === "done" || job.status === "error")) {
+            void load();
+          }
+        })
+        .catch(() => undefined);
+    }, 1500);
+    return () => window.clearInterval(id);
+  }, [trainActive, load]);
+
   const onEvaluate = async () => {
     setEvaluating(true);
     setError(null);
@@ -223,6 +334,15 @@ export function ModelsDashboard() {
       setError(err instanceof Error ? err.message : "Evaluation failed");
     } finally {
       setEvaluating(false);
+    }
+  };
+
+  const onTrain = async (targets: TrainTarget[]) => {
+    setError(null);
+    try {
+      setTrainJob(await startModelTrain(targets));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Train failed to start");
     }
   };
 
@@ -247,14 +367,24 @@ export function ModelsDashboard() {
             latest version. Re-run evaluation merges new scores without wiping older versions.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onEvaluate}
-          disabled={evaluating}
-          className="border border-accent bg-accent/15 px-4 py-2.5 text-[11px] uppercase tracking-[0.16em] text-white transition hover:bg-accent/25 disabled:opacity-50"
-        >
-          {evaluating ? "Evaluating…" : "Re-run evaluation"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void onTrain([...SECTION_ORDER])}
+            disabled={trainActive || evaluating}
+            className="border border-white/20 bg-white/5 px-4 py-2.5 text-[11px] uppercase tracking-[0.16em] text-white transition hover:border-accent/40 hover:bg-accent/10 disabled:opacity-50"
+          >
+            {trainActive ? "Training…" : "Train all"}
+          </button>
+          <button
+            type="button"
+            onClick={onEvaluate}
+            disabled={evaluating || trainActive}
+            className="border border-accent bg-accent/15 px-4 py-2.5 text-[11px] uppercase tracking-[0.16em] text-white transition hover:bg-accent/25 disabled:opacity-50"
+          >
+            {evaluating ? "Evaluating…" : "Re-run evaluation"}
+          </button>
+        </div>
       </header>
 
       <ExplainPanel title="How to read these scores">
@@ -289,22 +419,40 @@ export function ModelsDashboard() {
         </div>
       )}
 
+      {trainJob && (
+        <p className="font-mono text-xs text-muted">
+          Train job {trainJob.job_id} · {trainJob.status}
+          {trainJob.error ? ` · ${trainJob.error}` : ""}
+        </p>
+      )}
+
+      {data && (
+        <div className="flex flex-wrap gap-4 text-xs text-muted">
+          <span>Generated {new Date(data.generated_at).toLocaleString()}</span>
+          <span>·</span>
+          <span>{data.evaluation_races} ranking races backtested</span>
+          <span>·</span>
+          <span>{data.models.length} score entries</span>
+        </div>
+      )}
+
+      {!loading && (
+        <div className="grid gap-4">
+          {SECTION_ORDER.map((kind) => (
+            <ModelSection
+              key={kind}
+              kind={kind}
+              models={byKind[kind] ?? []}
+              trainProgress={trainJob?.models?.[kind]}
+              trainBusy={trainActive || evaluating}
+              onTrain={() => void onTrain([kind])}
+            />
+          ))}
+        </div>
+      )}
+
       {data && (
         <>
-          <div className="flex flex-wrap gap-4 text-xs text-muted">
-            <span>Generated {new Date(data.generated_at).toLocaleString()}</span>
-            <span>·</span>
-            <span>{data.evaluation_races} ranking races backtested</span>
-            <span>·</span>
-            <span>{data.models.length} score entries</span>
-          </div>
-
-          <div className="grid gap-4">
-            {SECTION_ORDER.map((kind) => (
-              <ModelSection key={kind} kind={kind} models={byKind[kind] ?? []} />
-            ))}
-          </div>
-
           <section className="border border-white/10 bg-panel/60 p-5 backdrop-blur">
             <h2 className="font-display text-2xl tracking-wide text-white">Metric glossary</h2>
             <p className="mt-1 mb-5 text-sm text-fog">

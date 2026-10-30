@@ -2,8 +2,15 @@ from functools import lru_cache
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.domain.models import ModelsMetricsResponse
+from app.domain.models import (
+    ModelsMetricsResponse,
+    TrainJobRequest,
+    TrainJobStatus,
+    TrainModelProgress,
+)
 from app.evaluation.metrics import ModelEvaluator
+from app.training.jobs import train_jobs
+from app.training.runners import TRAIN_TARGETS
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
@@ -11,6 +18,24 @@ router = APIRouter(prefix="/api/models", tags=["models"])
 @lru_cache(maxsize=1)
 def _evaluator() -> ModelEvaluator:
     return ModelEvaluator()
+
+
+def _job_to_status(raw: dict) -> TrainJobStatus:
+    models = {
+        key: TrainModelProgress.model_validate(val)
+        for key, val in (raw.get("models") or {}).items()
+    }
+    return TrainJobStatus(
+        job_id=str(raw["job_id"]),
+        status=str(raw["status"]),
+        targets=list(raw.get("targets") or []),
+        years=list(raw.get("years") or []),
+        max_sessions=raw.get("max_sessions"),
+        started_at=raw.get("started_at"),
+        finished_at=raw.get("finished_at"),
+        error=raw.get("error"),
+        models=models,
+    )
 
 
 @router.get("/metrics", response_model=ModelsMetricsResponse)
@@ -45,3 +70,33 @@ def run_evaluation(
             evaluator.close()
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.get("/train/status", response_model=TrainJobStatus | None)
+def train_status() -> TrainJobStatus | None:
+    raw = train_jobs.status()
+    if raw is None:
+        return None
+    return _job_to_status(raw)
+
+
+@router.post("/train", response_model=TrainJobStatus)
+def start_train(body: TrainJobRequest | None = None) -> TrainJobStatus:
+    body = body or TrainJobRequest()
+    targets = body.targets or list(TRAIN_TARGETS)
+    unknown = [t for t in targets if t not in TRAIN_TARGETS]
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown targets {unknown}; allowed: {list(TRAIN_TARGETS)}",
+        )
+    years = None
+    if body.years:
+        years = [int(y.strip()) for y in body.years.split(",") if y.strip()]
+    try:
+        raw = train_jobs.start(targets, years=years, max_sessions=body.max_sessions)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _job_to_status(raw)

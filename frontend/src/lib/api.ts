@@ -251,6 +251,36 @@ export function runModelEvaluation() {
   );
 }
 
+export type TrainTarget = "lap_time" | "classification" | "race_time";
+
+export type TrainModelProgress = {
+  status: "pending" | "queued" | "running" | "done" | "error";
+  stage: string | null;
+  current: number;
+  total: number;
+  error: string | null;
+};
+
+export type TrainJobStatus = {
+  job_id: string;
+  status: "queued" | "running" | "done" | "error";
+  targets: TrainTarget[];
+  years: number[];
+  max_sessions: number | null;
+  started_at: string | null;
+  finished_at: string | null;
+  error: string | null;
+  models: Partial<Record<TrainTarget, TrainModelProgress>>;
+};
+
+export function fetchTrainStatus() {
+  return getJson<TrainJobStatus | null>("/api/models/train/status");
+}
+
+export function startModelTrain(targets: TrainTarget[]) {
+  return postJson<TrainJobStatus>("/api/models/train", { targets });
+}
+
 export type LockStatus =
   | "locked_before_start"
   | "overwritten_after_start"

@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from app.data.pipeline import RaceDataPipeline
-from app.models.lap_time import LapTimeModel
+from app.training.runners import train_lap_time
 
 
 def main() -> None:
@@ -40,24 +40,28 @@ def main() -> None:
             for _, sess in sessions.tail(args.max_sessions).iterrows():
                 pipeline.ingest_session(int(sess["session_key"]), force=True)
 
-        frame = pipeline.build_training_frame(
-            years=years,
-            max_sessions=args.max_sessions,
-            completed_only=not args.include_future,
-        )
-        if not frame.empty and "year" in frame.columns:
-            print("Rows by year:")
-            print(frame["year"].value_counts().sort_index().to_string())
-        print(f"Training rows: {len(frame)}")
-        if frame.empty:
-            raise SystemExit("No training data available from OpenF1")
+        if args.include_future:
+            # Rare path kept for CLI; shared runner uses completed_only=True
+            from app.models.lap_time import LapTimeModel
 
-        model = LapTimeModel()
-        metrics = model.train(frame)
+            frame = pipeline.build_training_frame(
+                years=years,
+                max_sessions=args.max_sessions,
+                completed_only=False,
+            )
+            if frame.empty:
+                raise SystemExit("No training data available from OpenF1")
+            metrics = LapTimeModel().train(frame)
+        else:
+            metrics = train_lap_time(
+                pipeline,
+                years=years,
+                max_sessions=args.max_sessions,
+                on_progress=lambda stage, cur, tot: print(f"  [{stage}] {cur}/{tot}"),
+            )
         print("Training complete:")
         for k, v in metrics.items():
             print(f"  {k}: {v}")
-        print(f"Artifacts saved to {model.artifact_dir}")
     finally:
         pipeline.close()
 
