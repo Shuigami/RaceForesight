@@ -2,16 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  fetchLiveModelArtifacts,
   fetchModelMetrics,
   fetchTrainStatus,
   runModelEvaluation,
   startModelTrain,
+  type LiveModelArtifact,
   type ModelScore,
   type ModelsMetricsResponse,
   type TrainJobStatus,
   type TrainModelProgress,
   type TrainTarget,
 } from "@/lib/api";
+import { fmtTrainedAt } from "@/lib/resultsIntegrity";
 import { METRIC_GLOSSARY, metricInfo } from "@/lib/metricGlossary";
 import { ExplainPanel } from "./ExplainPanel";
 
@@ -89,10 +92,12 @@ function stageLabel(stage: string | null | undefined): string {
 
 function TrainBar({
   progress,
+  artifact,
   busy,
   onTrain,
 }: {
   progress: TrainModelProgress | undefined;
+  artifact: LiveModelArtifact | undefined;
   busy: boolean;
   onTrain: () => void;
 }) {
@@ -119,7 +124,13 @@ function TrainBar({
   return (
     <div className="mt-5 border-t border-white/10 pt-4">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Train</p>
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.14em] text-muted">Train</p>
+          <p className="mt-1 font-mono text-[11px] text-fog">
+            Last trained {fmtTrainedAt(artifact?.trained_at)}
+            {artifact?.version ? ` · ${artifact.version}` : ""}
+          </p>
+        </div>
         <button
           type="button"
           onClick={onTrain}
@@ -146,12 +157,14 @@ function ModelSection({
   kind,
   models,
   trainProgress,
+  artifact,
   trainBusy,
   onTrain,
 }: {
   kind: (typeof SECTION_ORDER)[number];
   models: ModelScore[];
   trainProgress: TrainModelProgress | undefined;
+  artifact: LiveModelArtifact | undefined;
   trainBusy: boolean;
   onTrain: () => void;
 }) {
@@ -273,19 +286,34 @@ function ModelSection({
         </>
       )}
 
-      <TrainBar progress={trainProgress} busy={trainBusy} onTrain={onTrain} />
+      <TrainBar
+        progress={trainProgress}
+        artifact={artifact}
+        busy={trainBusy}
+        onTrain={onTrain}
+      />
     </article>
   );
 }
 
 export function ModelsDashboard() {
   const [data, setData] = useState<ModelsMetricsResponse | null>(null);
+  const [artifacts, setArtifacts] = useState<Partial<Record<TrainTarget, LiveModelArtifact>>>({});
   const [loading, setLoading] = useState(true);
   const [evaluating, setEvaluating] = useState(false);
   const [trainJob, setTrainJob] = useState<TrainJobStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const trainActive = trainJob?.status === "queued" || trainJob?.status === "running";
+
+  const loadArtifacts = useCallback(async () => {
+    try {
+      const live = await fetchLiveModelArtifacts();
+      setArtifacts(live.models ?? {});
+    } catch {
+      /* artifacts optional */
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -298,7 +326,8 @@ export function ModelsDashboard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+    await loadArtifacts();
+  }, [loadArtifacts]);
 
   useEffect(() => {
     void load();
@@ -444,6 +473,7 @@ export function ModelsDashboard() {
               kind={kind}
               models={byKind[kind] ?? []}
               trainProgress={trainJob?.models?.[kind]}
+              artifact={artifacts[kind]}
               trainBusy={trainActive || evaluating}
               onTrain={() => void onTrain([kind])}
             />

@@ -1,14 +1,22 @@
+from __future__ import annotations
+
+import json
 from functools import lru_cache
 
 from fastapi import APIRouter, HTTPException, Query
 
 from app.domain.models import (
+    LiveModelArtifact,
+    LiveModelsResponse,
     ModelsMetricsResponse,
     TrainJobRequest,
     TrainJobStatus,
     TrainModelProgress,
 )
 from app.evaluation.metrics import ModelEvaluator
+from app.models.lap_time import LapTimeModel
+from app.models.race_time import RaceTimeModel
+from app.models.ranking import RankingModel
 from app.training.jobs import train_jobs
 from app.training.runners import TRAIN_TARGETS
 
@@ -18,6 +26,22 @@ router = APIRouter(prefix="/api/models", tags=["models"])
 @lru_cache(maxsize=1)
 def _evaluator() -> ModelEvaluator:
     return ModelEvaluator()
+
+
+def _live_artifact(kind: str, model: LapTimeModel | RankingModel | RaceTimeModel) -> LiveModelArtifact:
+    meta_path = model.artifact_dir / model.META_FILE
+    if meta_path.exists():
+        try:
+            model.meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception:
+            model.meta = {}
+    return LiveModelArtifact(
+        kind=kind,
+        name=model.DISPLAY_NAME,
+        version=str(model.meta.get("version") or model.VERSION),
+        ready=model.is_ready,
+        trained_at=model.trained_at,
+    )
 
 
 def _job_to_status(raw: dict) -> TrainJobStatus:
@@ -35,6 +59,18 @@ def _job_to_status(raw: dict) -> TrainJobStatus:
         finished_at=raw.get("finished_at"),
         error=raw.get("error"),
         models=models,
+    )
+
+
+@router.get("/artifacts", response_model=LiveModelsResponse)
+def live_artifacts() -> LiveModelsResponse:
+    """Live on-disk model versions + last train time (no evaluate required)."""
+    return LiveModelsResponse(
+        models={
+            "lap_time": _live_artifact("lap_time", LapTimeModel()),
+            "classification": _live_artifact("classification", RankingModel()),
+            "race_time": _live_artifact("race_time", RaceTimeModel()),
+        }
     )
 
 

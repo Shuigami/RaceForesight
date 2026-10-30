@@ -253,6 +253,22 @@ export function runModelEvaluation() {
 
 export type TrainTarget = "lap_time" | "classification" | "race_time";
 
+export type LiveModelArtifact = {
+  kind: string;
+  name: string;
+  version: string;
+  ready: boolean;
+  trained_at: string | null;
+};
+
+export type LiveModelsResponse = {
+  models: Partial<Record<TrainTarget, LiveModelArtifact>>;
+};
+
+export function fetchLiveModelArtifacts() {
+  return getJson<LiveModelsResponse>("/api/models/artifacts");
+}
+
 export type TrainModelProgress = {
   status: "pending" | "queued" | "running" | "done" | "error";
   stage: string | null;

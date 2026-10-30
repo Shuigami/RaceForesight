@@ -166,6 +166,18 @@ class ModelsMetricsResponse(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class LiveModelArtifact(BaseModel):
+    kind: str
+    name: str
+    version: str
+    ready: bool = False
+    trained_at: str | None = None
+
+
+class LiveModelsResponse(BaseModel):
+    models: dict[str, LiveModelArtifact] = Field(default_factory=dict)
+
+
 class TrainModelProgress(BaseModel):
     status: str  # pending | queued | running | done | error
     stage: str | None = None
