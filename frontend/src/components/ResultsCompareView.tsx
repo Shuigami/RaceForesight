@@ -10,6 +10,7 @@ import {
   type LockStatus,
   type PredictionCompareResponse,
 } from "@/lib/api";
+import { fmtTrainedAt, integrityLabel, integrityTone } from "@/lib/resultsIntegrity";
 import { CompoundPills } from "./CompoundPills";
 import { DriverAvatar } from "./DriverAvatar";
 
@@ -151,6 +152,12 @@ export function ResultsCompareView({
         >
           {compare.status === "scored" ? "Scored" : "Actuals pending"}
         </span>
+        <span
+          className={`border px-3 py-1.5 text-[11px] uppercase tracking-[0.14em] ${integrityTone(compare.integrity_status ?? "unknown")}`}
+          title="Save timing vs race start, and whether any model was trained after lights out"
+        >
+          {integrityLabel(compare.integrity_status ?? "unknown")}
+        </span>
         <div className="font-mono text-xs text-muted">
           Saved {fmtWhen(snap.saved_at)}
           {" · "}
@@ -170,6 +177,9 @@ export function ResultsCompareView({
             <p className="text-[10px] uppercase tracking-[0.16em] text-muted">{label}</p>
             <p className="mt-1 text-white">{ref.name}</p>
             <p className="font-mono text-[11px] text-muted">{ref.version}</p>
+            <p className="mt-1 font-mono text-[11px] text-fog">
+              Trained {fmtTrainedAt(ref.trained_at)}
+            </p>
           </div>
         ))}
       </div>

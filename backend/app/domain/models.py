@@ -185,17 +185,23 @@ def infer_saved_model_name(section: str, version: str) -> str:
 class SavedModelRef(BaseModel):
     name: str
     version: str
+    trained_at: str | None = None
 
 
 def _coerce_saved_model_ref(section: str, value: Any) -> Any:
     if isinstance(value, str):
-        return {"name": infer_saved_model_name(section, value), "version": value}
+        return {"name": infer_saved_model_name(section, value), "version": value, "trained_at": None}
     if isinstance(value, dict):
         version = str(value.get("version") or "")
         name = str(value.get("name") or "").strip()
         if not name and version:
             name = infer_saved_model_name(section, version)
-        return {"name": name or infer_saved_model_name(section, version), "version": version}
+        trained = value.get("trained_at")
+        return {
+            "name": name or infer_saved_model_name(section, version),
+            "version": version,
+            "trained_at": str(trained) if trained else None,
+        }
     return value
 
 
@@ -261,6 +267,7 @@ class PredictionSaveListItem(BaseModel):
     race_start_at: str | None = None
     has_actual: bool = False
     lock_status: str
+    integrity_status: str = "unknown"  # pre_race | post_race | train_overlap | awaiting_race | unknown
     status: str  # awaiting_race | scored
     model_versions: PredictionModelVersions | None = None
 
@@ -284,6 +291,7 @@ class PredictionCompareMetrics(BaseModel):
 class PredictionCompareResponse(BaseModel):
     snapshot: PredictionSnapshot
     lock_status: str
+    integrity_status: str = "unknown"
     status: str
     overwritten: bool = False
     actual_finishes: list[ActualFinishRow] = Field(default_factory=list)

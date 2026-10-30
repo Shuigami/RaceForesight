@@ -101,6 +101,11 @@ export function ResultsDashboard() {
             Save from Race as many times as you want. Each GP lists its saves; rename or delete
             there, then open a save to score against the real race.
           </p>
+          <p>
+            <strong className="text-white">Scored</strong> means OpenF1 has finishing results —
+            it does not retrain the models. Integrity badges flag pre-race saves, post-race
+            saves, and train overlap (model trained after lights out).
+          </p>
         </ExplainPanel>
       </header>
 

@@ -15,6 +15,7 @@ from app.config import settings
 from app.domain.circuit_laps import resolve_race_laps
 from app.models.lap_time import LapTimeModel
 from app.models.ranking import RANK_FEATURE_COLUMNS, RankingModel
+from app.models.trained_at import resolve_trained_at, utc_now_iso
 from app.models.xgb_device import force_xgb_cpu, xgb_device
 
 RACE_TIME_FEATURE_COLUMNS = [
@@ -65,6 +66,10 @@ class RaceTimeModel:
     @property
     def is_ready(self) -> bool:
         return (self.artifact_dir / self.MODEL_FILE).exists()
+
+    @property
+    def trained_at(self) -> str | None:
+        return resolve_trained_at(self.meta, self.artifact_dir / self.MODEL_FILE)
 
     def _circuit_baseline(self, circuit: str) -> float:
         lap = LapTimeModel(self.artifact_dir)
@@ -218,6 +223,7 @@ class RaceTimeModel:
         best_iteration = int(getattr(self.model, "best_iteration", None) or self.model.n_estimators)
         self.meta = {
             "version": self.VERSION,
+            "trained_at": utc_now_iso(),
             "device": device,
             "n_races": len(parts),
             "n_train": int(len(train_df)),

@@ -23,6 +23,7 @@ from app.models.race_time import RaceTimeModel
 from app.models.ranking import RankingModel
 from app.predictions.compare import (
     classification_metrics,
+    compute_integrity_status,
     compute_lock_status,
     parse_actual_results,
     race_time_metrics,
@@ -111,6 +112,16 @@ def _enrich_meeting(raw: dict) -> PredictionMeetingListItem:
     )
 
 
+def _trained_ats_from_versions(model_versions: PredictionModelVersions | None) -> list[str | None]:
+    if model_versions is None:
+        return []
+    return [
+        model_versions.classification.trained_at,
+        model_versions.race_time.trained_at,
+        model_versions.strategy.trained_at,
+    ]
+
+
 def _enrich_save(raw: dict) -> PredictionSaveListItem:
     mk = int(raw["meeting_key"])
     has_actual = bool(_finishing_results(mk)[0])
@@ -126,6 +137,11 @@ def _enrich_save(raw: dict) -> PredictionSaveListItem:
             model_versions = PredictionModelVersions.model_validate(raw["model_versions"])
         except Exception:
             model_versions = None
+    integrity = compute_integrity_status(
+        lock_status=lock,
+        race_start_at=raw.get("race_start_at"),
+        model_trained_ats=_trained_ats_from_versions(model_versions),
+    )
     return PredictionSaveListItem(
         id=str(raw["id"]),
         name=str(raw.get("name") or raw["id"]),
@@ -140,6 +156,7 @@ def _enrich_save(raw: dict) -> PredictionSaveListItem:
         race_start_at=raw.get("race_start_at"),
         has_actual=has_actual,
         lock_status=lock,
+        integrity_status=integrity,
         status="scored" if has_actual else "awaiting_race",
         model_versions=model_versions,
     )
@@ -181,14 +198,17 @@ def save_predictions(
                 classification=SavedModelRef(
                     name=RankingModel.DISPLAY_NAME,
                     version=classification.model_version,
+                    trained_at=_predictor().ranker.trained_at,
                 ),
                 race_time=SavedModelRef(
                     name=RaceTimeModel.DISPLAY_NAME,
                     version=race_time.model_version,
+                    trained_at=_race_time_predictor().model.trained_at,
                 ),
                 strategy=SavedModelRef(
                     name=LapTimeModel.DISPLAY_NAME,
                     version=strategy.model_version,
+                    trained_at=_simulator().model.trained_at,
                 ),
             ),
             classification=SavedClassificationSlice(
@@ -294,6 +314,11 @@ def _compare_from_snapshot(snapshot: PredictionSnapshot) -> PredictionCompareRes
         saved_at=snapshot.saved_at,
         race_start_at=snapshot.race_start_at,
     )
+    integrity = compute_integrity_status(
+        lock_status=lock,
+        race_start_at=snapshot.race_start_at,
+        model_trained_ats=_trained_ats_from_versions(snapshot.model_versions),
+    )
     overwritten = lock == "overwritten_after_start"
     finishes = [
         ActualFinishRow(
@@ -323,6 +348,7 @@ def _compare_from_snapshot(snapshot: PredictionSnapshot) -> PredictionCompareRes
     return PredictionCompareResponse(
         snapshot=snapshot,
         lock_status=lock,
+        integrity_status=integrity,
         status="scored" if has_actual else "awaiting_race",
         overwritten=overwritten,
         actual_finishes=finishes,

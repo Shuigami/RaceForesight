@@ -257,6 +257,13 @@ export type LockStatus =
   | "saved_after_start"
   | "awaiting_race_start";
 
+export type IntegrityStatus =
+  | "pre_race"
+  | "post_race"
+  | "train_overlap"
+  | "awaiting_race"
+  | "unknown";
+
 export type PredictionMeetingListItem = {
   meeting_key: number;
   meeting_name: string;
@@ -275,6 +282,7 @@ export type PredictionMeetingListItem = {
 export type SavedModelRef = {
   name: string;
   version: string;
+  trained_at?: string | null;
 };
 
 export type PredictionModelVersions = {
@@ -297,6 +305,7 @@ export type PredictionSaveListItem = {
   race_start_at: string | null;
   has_actual: boolean;
   lock_status: LockStatus;
+  integrity_status: IntegrityStatus;
   status: "awaiting_race" | "scored";
   model_versions?: PredictionModelVersions | null;
 };
@@ -323,6 +332,7 @@ export type ActualFinishRow = {
 export type PredictionCompareResponse = {
   snapshot: PredictionSnapshot;
   lock_status: LockStatus;
+  integrity_status: IntegrityStatus;
   status: "awaiting_race" | "scored";
   overwritten: boolean;
   actual_finishes: ActualFinishRow[];

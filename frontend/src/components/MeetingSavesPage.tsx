@@ -13,6 +13,7 @@ import {
   type MeetingSummary,
   type PredictionSaveListItem,
 } from "@/lib/api";
+import { fmtTrainedAt, integrityLabel, integrityTone } from "@/lib/resultsIntegrity";
 import { MeetingHero } from "./MeetingHero";
 
 function fmtWhen(iso: string | null | undefined) {
@@ -148,6 +149,11 @@ function SaveRow({
           >
             {item.status === "scored" ? "Scored" : "Pending"}
           </span>
+          <span
+            className={`border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${integrityTone(item.integrity_status ?? "unknown")}`}
+          >
+            {integrityLabel(item.integrity_status ?? "unknown")}
+          </span>
           <span className="font-mono text-[11px] text-muted">{fmtWhen(item.saved_at)}</span>
         </div>
         {item.model_versions && (
@@ -163,6 +169,7 @@ function SaveRow({
                 <span className="text-muted">{label}</span>{" "}
                 <span className="text-white/90">{ref.name}</span>{" "}
                 <span className="font-mono text-muted">{ref.version}</span>
+                <span className="font-mono text-muted"> · {fmtTrainedAt(ref.trained_at)}</span>
               </span>
             ))}
           </p>

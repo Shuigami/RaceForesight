@@ -15,6 +15,14 @@ LockStatus = Literal[
     "awaiting_race_start",
 ]
 
+IntegrityStatus = Literal[
+    "pre_race",
+    "post_race",
+    "train_overlap",
+    "awaiting_race",
+    "unknown",
+]
+
 
 def _parse_dt(value: str | None) -> datetime | None:
     if not value:
@@ -48,6 +56,28 @@ def compute_lock_status(
     if start > now:
         return "awaiting_race_start"
     return "locked_before_start"
+
+
+def compute_integrity_status(
+    *,
+    lock_status: LockStatus,
+    race_start_at: str | None,
+    model_trained_ats: list[str | None],
+) -> IntegrityStatus:
+    """Score honesty: train-after-race wins over save timing."""
+    start = _parse_dt(race_start_at)
+    if start is not None:
+        for raw in model_trained_ats:
+            trained = _parse_dt(raw)
+            if trained is not None and trained >= start:
+                return "train_overlap"
+    if lock_status == "awaiting_race_start":
+        return "awaiting_race"
+    if lock_status in ("saved_after_start", "overwritten_after_start"):
+        return "post_race"
+    if lock_status == "locked_before_start":
+        return "pre_race"
+    return "unknown"
 
 
 def compounds_match(pred: list[str] | None, actual: list[str] | None) -> bool:

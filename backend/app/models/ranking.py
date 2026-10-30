@@ -11,6 +11,7 @@ import pandas as pd
 from xgboost import XGBRanker
 
 from app.config import settings
+from app.models.trained_at import resolve_trained_at, utc_now_iso
 from app.models.xgb_device import force_xgb_cpu, xgb_device
 from app.simulation.form import finishing_form, shrunk_pace_offsets, team_form
 
@@ -42,6 +43,10 @@ class RankingModel:
     @property
     def is_ready(self) -> bool:
         return (self.artifact_dir / self.MODEL_FILE).exists()
+
+    @property
+    def trained_at(self) -> str | None:
+        return resolve_trained_at(self.meta, self.artifact_dir / self.MODEL_FILE)
 
     def build_race_features(
         self,
@@ -139,6 +144,7 @@ class RankingModel:
         self.model.fit(x, y, group=group_sizes)
         self.meta = {
             "version": self.VERSION,
+            "trained_at": utc_now_iso(),
             "device": device,
             "n_races": len(group_sizes),
             "n_rows": int(len(data)),

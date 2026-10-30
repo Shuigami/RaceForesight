@@ -13,6 +13,7 @@ from xgboost import XGBRegressor
 
 from app.config import settings
 from app.features.builder import DRY_COMPOUNDS, FEATURE_COLUMNS, WET_COMPOUNDS, FeatureBuilder
+from app.models.trained_at import resolve_trained_at, utc_now_iso
 from app.models.xgb_device import force_xgb_cpu, xgb_device
 
 # Sensible COTA dry-race baseline when historical COTA data is sparse
@@ -40,6 +41,10 @@ class LapTimeModel:
     @property
     def is_ready(self) -> bool:
         return (self.artifact_dir / self.MODEL_FILE).exists()
+
+    @property
+    def trained_at(self) -> str | None:
+        return resolve_trained_at(self.meta, self.artifact_dir / self.MODEL_FILE)
 
     def _baseline_for(self, circuit: str) -> float:
         if circuit in self.circuit_baselines:
@@ -147,6 +152,7 @@ class LapTimeModel:
 
         self.meta = {
             "version": self.VERSION,
+            "trained_at": utc_now_iso(),
             "target": "circuit_residual",
             "device": device,
             "n_train": int(len(train_df)),
