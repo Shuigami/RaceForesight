@@ -12,8 +12,8 @@ from app.config import settings
 from app.domain.circuit_laps import resolve_race_laps
 from app.domain.models import ActualDriverStrategy, MeetingSummary, StintPlan
 
-# Meeting weekend can start Fri while race is Sun — keep "next" through race day.
-_DEFAULT_MEETING_LOOKBACK = pd.Timedelta(days=4)
+# OpenF1 meeting date_start is usually Fri; race is ~Sun. Stay "next" through race day, flip Monday.
+_RACE_DAY_OFFSET = pd.Timedelta(days=2)
 
 
 def _media_url(value: object) -> str | None:
@@ -31,21 +31,16 @@ def pick_default_meeting_key(
     *,
     now: datetime | None = None,
 ) -> int:
-    """Pick Austin / United States GP when possible; never prefer Las Vegas via country alone."""
+    """Chronological next/current GP; day after race Sunday → following meeting."""
     if meetings.empty:
         return -1
     now = now or datetime.now(timezone.utc)
+    today = pd.Timestamp(now).tz_convert("UTC").normalize()
 
-    circuit = meetings["circuit_short_name"].astype(str)
-    name = meetings["meeting_name"].astype(str)
-    austin = meetings[
-        circuit.str.upper().eq("COTA")
-        | circuit.str.contains("Austin", case=False, na=False)
-        | name.str.contains("United States", case=False, na=False)
-    ].copy()
-    pool = austin if not austin.empty else meetings.copy()
+    pool = meetings.copy()
     pool["date_start"] = pd.to_datetime(pool["date_start"], utc=True, errors="coerce")
-    upcoming = pool[pool["date_start"] >= now - _DEFAULT_MEETING_LOOKBACK].sort_values("date_start")
+    race_day = pool["date_start"].dt.normalize() + _RACE_DAY_OFFSET
+    upcoming = pool[race_day >= today].sort_values("date_start")
     if not upcoming.empty:
         return int(upcoming.iloc[0]["meeting_key"])
     return int(pool.sort_values("date_start").iloc[-1]["meeting_key"])
@@ -162,11 +157,7 @@ class RaceDataPipeline:
         return out
 
     def resolve_default_meeting_key(self, meetings: pd.DataFrame | None = None) -> int:
-        """Prefer next/current Austin (COTA / United States GP); else latest such meeting.
-
-        Las Vegas / Miami are also "United States" in OpenF1 — do not treat them as the
-        default target. Keep a multi-day weekend window so race Sunday still counts.
-        """
+        """Next/current GP on the calendar (through race day; advances the day after)."""
         if meetings is None:
             frames = []
             for year in range(2023, settings.default_season + 1):

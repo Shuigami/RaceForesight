@@ -33,17 +33,22 @@ def _meetings() -> pd.DataFrame:
     )
 
 
-def test_race_sunday_still_picks_austin_not_vegas() -> None:
+def test_race_sunday_still_picks_current_gp() -> None:
     # Sunday of US GP weekend (meeting started Friday)
     now = datetime(2026, 10, 25, 17, 0, tzinfo=timezone.utc)
     assert pick_default_meeting_key(_meetings(), now=now) == 1297
 
 
-def test_after_weekend_falls_back_to_latest_austin() -> None:
-    now = datetime(2026, 10, 28, 12, 0, tzinfo=timezone.utc)
-    assert pick_default_meeting_key(_meetings(), now=now) == 1297
+def test_day_after_race_picks_next_gp() -> None:
+    now = datetime(2026, 10, 26, 12, 0, tzinfo=timezone.utc)
+    assert pick_default_meeting_key(_meetings(), now=now) == 1298
 
 
-def test_before_weekend_picks_upcoming_austin() -> None:
+def test_before_weekend_picks_upcoming_gp() -> None:
     now = datetime(2026, 10, 20, 12, 0, tzinfo=timezone.utc)
     assert pick_default_meeting_key(_meetings(), now=now) == 1297
+
+
+def test_after_season_falls_back_to_latest() -> None:
+    now = datetime(2026, 12, 1, 12, 0, tzinfo=timezone.utc)
+    assert pick_default_meeting_key(_meetings(), now=now) == 1300
