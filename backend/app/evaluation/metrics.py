@@ -17,10 +17,10 @@ from app.config import settings
 from app.data.pipeline import RaceDataPipeline
 from app.domain.models import ModelScore, ModelsMetricsResponse
 from app.features.builder import FEATURE_COLUMNS, FeatureBuilder
-from app.domain.circuit_laps import resolve_race_laps
 from app.models.lap_time import LapTimeModel
-from app.models.race_time import RaceTimeModel, normalize_race_duration_s
+from app.models.race_time import RaceTimeModel
 from app.models.ranking import RankingModel
+from app.training.runners import build_classification_frames, build_race_time_frames
 
 
 class ModelEvaluator:
@@ -105,18 +105,11 @@ class ModelEvaluator:
         self.save(response)
         return response
 
-    def _prepare_supervised(self, df: pd.DataFrame) -> tuple[pd.DataFrame, FeatureBuilder, dict[str, float]]:
-        model = LapTimeModel(self.artifact_dir)
-        work = model._filter_training_laps(df)
-        baselines = work.groupby("circuit_short_name")["lap_duration"].median().to_dict()
-        baselines["*"] = float(work["lap_duration"].median())
-        work["baseline"] = work["circuit_short_name"].map(baselines).fillna(baselines["*"])
-        work["residual"] = work["lap_duration"] - work["baseline"]
-
+    def _prepare_supervised(self, df: pd.DataFrame) -> pd.DataFrame:
+        work = LapTimeModel._filter_training_laps(df)
         features = FeatureBuilder(self.artifact_dir)
         features.fit(work)
-        work = features.transform(work).sort_values(["year", "session_key", "lap_number"])
-        return work, features, {str(k): float(v) for k, v in baselines.items()}
+        return features.transform(work).sort_values(["year", "session_key", "lap_number"])
 
     def _temporal_split(self, work: pd.DataFrame, test_fraction: float = 0.2):
         split_idx = int(len(work) * (1 - test_fraction))
@@ -145,8 +138,9 @@ class ModelEvaluator:
                     "target": str(meta.get("target", "circuit_residual")),
                 },
                 description=(
-                    "Primary lap-time model (circuit baseline + residual). "
-                    "Includes compound×age / circuit×compound, stint features, wet compounds, SC downweight."
+                    "Primary lap-time model (season-normalised circuit baseline + residual). "
+                    "Baselines come from the train split only; v3 and older put test laps in their own "
+                    "baseline, so their MAE is not comparable."
                 ),
             )
 
@@ -168,8 +162,13 @@ class ModelEvaluator:
         )
 
     def _score_random_forest(self, frame: pd.DataFrame) -> ModelScore:
-        work, _, _ = self._prepare_supervised(frame)
-        train_df, test_df = self._temporal_split(work)
+        train_df, test_df = self._temporal_split(self._prepare_supervised(frame))
+        train_df, test_df = train_df.copy(), test_df.copy()
+        # Same leak-free season baselines as the XGBoost lap model.
+        pace, levels = LapTimeModel.season_pace_levels(train_df)
+        for part in (train_df, test_df):
+            part["baseline"] = LapTimeModel._season_baseline(part, pace, levels)
+            part["residual"] = part["lap_duration"] - part["baseline"]
         x_train = train_df[FEATURE_COLUMNS].to_numpy(dtype=np.float32)
         y_train = train_df["residual"].to_numpy(dtype=np.float32)
         x_test = test_df[FEATURE_COLUMNS].to_numpy(dtype=np.float32)
@@ -195,7 +194,7 @@ class ModelEvaluator:
         return ModelScore(
             name="Lap-time Random Forest",
             kind="lap_time",
-            version="rf-lap-v2",
+            version="rf-lap-v3",
             primary=False,
             metrics={
                 "mae_s": round(mae, 4),
@@ -208,59 +207,9 @@ class ModelEvaluator:
             description="Benchmark regressor on the same features/split as XGBoost (not used in live inference).",
         )
 
-    def _build_labeled_races_inline(self, *, years: list[int], max_sessions: int) -> list[pd.DataFrame]:
-        sessions = self.pipeline.list_race_sessions(years)
-        if sessions.empty:
-            return []
-        sessions = sessions.sort_values("date_start").tail(max_sessions)
-        history_all = self.pipeline.race_results_history(years=years, max_sessions=max_sessions + 5)
-        pace = self.pipeline.build_training_frame(years=years, max_sessions=max_sessions, completed_only=True)
-        labeled: list[pd.DataFrame] = []
-        for _, sess in sessions.iterrows():
-            session_key = int(sess["session_key"])
-            meeting_key = int(sess["meeting_key"])
-            circuit = str(sess.get("circuit_short_name") or "")
-            try:
-                actual = self.pipeline.client.session_result(session_key)
-            except Exception:
-                continue
-            if actual.empty or "position" not in actual.columns:
-                continue
-            actual = actual.dropna(subset=["position", "driver_number"]).copy()
-            actual["position"] = actual["position"].astype(int)
-            if len(actual) < 10:
-                continue
-            drivers = self.pipeline.ingest_session(session_key)["drivers"]
-            if drivers.empty:
-                continue
-            drivers = drivers.drop_duplicates(subset=["driver_number"])
-            if "team_name" in drivers.columns:
-                drivers = drivers[drivers["team_name"].notna()]
-            hist = history_all[history_all["session_key"].astype(int) != session_key] if not history_all.empty else history_all
-            pace_ex = pace[pace["session_key"].astype(int) != session_key] if not pace.empty else pace
-            grid = self.pipeline.qualifying_grid(meeting_key)
-            weather = self.pipeline.ingest_session(session_key).get("weather", pd.DataFrame())
-            rainfall = float(weather["rainfall"].mean()) if not weather.empty and "rainfall" in weather.columns else 0.0
-            feats = RankingModel().build_race_features(
-                drivers=drivers,
-                grid=grid,
-                history=hist,
-                pace_frame=pace_ex,
-                circuit=circuit,
-                rainfall=rainfall,
-            )
-            pos_map = {int(r["driver_number"]): int(r["position"]) for _, r in actual.iterrows()}
-            feats["position"] = feats["driver_number"].map(pos_map)
-            feats["session_key"] = session_key
-            feats["circuit_short_name"] = circuit
-            feats = feats.dropna(subset=["position"])
-            if len(feats) >= 8:
-                labeled.append(feats)
-        return labeled
-
     def _score_ranking_loo(self, *, years: list[int], max_races: int) -> tuple[ModelScore, int, list[str]]:
         notes: list[str] = []
-        labeled = self._build_labeled_races_inline(years=years, max_sessions=max(40, max_races + 20))
+        labeled = build_classification_frames(self.pipeline, years=years, max_sessions=max(40, max_races + 20))
         if len(labeled) < 3:
             return (
                 ModelScore(
@@ -344,71 +293,14 @@ class ModelEvaluator:
             metrics=metrics,
             description=(
                 "Leave-one-race-out backtest of pairwise XGBRanker vs OpenF1 session_result. "
-                "Features: qualifying grid, recent/circuit form, shrunk pace, team form, rain."
+                "Form/pace use only earlier races (v2 and older leaked later results); monotone in grid/form/pace."
             ),
         )
         return score, evaluated, notes
 
-    def _build_labeled_race_times_inline(self, *, years: list[int], max_sessions: int) -> list[pd.DataFrame]:
-        sessions = self.pipeline.list_race_sessions(years)
-        if sessions.empty:
-            return []
-        sessions = sessions.sort_values("date_start").tail(max_sessions)
-        history_all = self.pipeline.race_results_history(years=years, max_sessions=max_sessions + 5)
-        pace = self.pipeline.build_training_frame(years=years, max_sessions=max_sessions, completed_only=True)
-        rt = RaceTimeModel(self.artifact_dir)
-        labeled: list[pd.DataFrame] = []
-        for _, sess in sessions.iterrows():
-            session_key = int(sess["session_key"])
-            meeting_key = int(sess["meeting_key"])
-            circuit = str(sess.get("circuit_short_name") or "")
-            try:
-                actual = self.pipeline.client.session_result(session_key)
-            except Exception:
-                continue
-            if actual.empty or "driver_number" not in actual.columns or "duration" not in actual.columns:
-                continue
-            time_map: dict[int, float] = {}
-            for _, row in actual.dropna(subset=["driver_number"]).iterrows():
-                if bool(row.get("dnf")) or bool(row.get("dns")) or bool(row.get("dsq")):
-                    continue
-                dur = normalize_race_duration_s(row.get("duration"))
-                if dur is not None:
-                    time_map[int(row["driver_number"])] = dur
-            if len(time_map) < 8:
-                continue
-            drivers = self.pipeline.ingest_session(session_key)["drivers"]
-            if drivers.empty:
-                continue
-            drivers = drivers.drop_duplicates(subset=["driver_number"])
-            if "team_name" in drivers.columns:
-                drivers = drivers[drivers["team_name"].notna()]
-            hist = history_all[history_all["session_key"].astype(int) != session_key] if not history_all.empty else history_all
-            pace_ex = pace[pace["session_key"].astype(int) != session_key] if not pace.empty else pace
-            grid = self.pipeline.qualifying_grid(meeting_key)
-            weather = self.pipeline.ingest_session(session_key).get("weather", pd.DataFrame())
-            rainfall = float(weather["rainfall"].mean()) if not weather.empty and "rainfall" in weather.columns else 0.0
-            feats = rt.build_race_features(
-                drivers=drivers,
-                grid=grid,
-                history=hist,
-                pace_frame=pace_ex,
-                circuit=circuit,
-                rainfall=rainfall,
-                race_laps=resolve_race_laps(circuit),
-                pit_loss=self.pipeline.estimate_pit_loss(circuit_short_name=circuit),
-            )
-            feats["race_time_s"] = feats["driver_number"].map(time_map)
-            feats["session_key"] = session_key
-            feats["circuit_short_name"] = circuit
-            feats = feats.dropna(subset=["race_time_s"])
-            if len(feats) >= 8:
-                labeled.append(feats)
-        return labeled
-
     def _score_race_time_loo(self, *, years: list[int], max_races: int) -> tuple[ModelScore, list[str]]:
         notes: list[str] = []
-        labeled = self._build_labeled_race_times_inline(years=years, max_sessions=max(40, max_races + 20))
+        labeled = build_race_time_frames(self.pipeline, years=years, max_sessions=max(40, max_races + 20))
         if len(labeled) < 3:
             return (
                 ModelScore(
@@ -482,7 +374,7 @@ class ModelEvaluator:
             metrics=metrics,
             description=(
                 "Leave-one-race-out MAE/RMSE vs OpenF1 session_result.duration for classified finishers. "
-                "Features: grid, form, pace, race distance, pit loss, pace×distance proxy."
+                "Prior = lap pace × laps × learned ratio; red-flag races (Monaco, Monza 2026) dominate the mean."
             ),
         )
         return score, notes
