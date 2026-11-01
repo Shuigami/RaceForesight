@@ -27,7 +27,7 @@ class LapTimeModel:
     MODEL_FILE = "lap_time_xgb.joblib"
     META_FILE = "lap_time_meta.json"
     BASELINES_FILE = "circuit_baselines.json"
-    VERSION = "xgboost-lap-v3"
+    VERSION = "xgboost-lap-v4"
     DISPLAY_NAME = "Lap-time XGBoost"
 
     def __init__(self, artifact_dir: Path | None = None) -> None:
@@ -74,6 +74,32 @@ class LapTimeModel:
         work["sample_weight"] = (1.0 - 0.7 * intensity.clip(0, 1)).clip(0.25, 1.0)
         return work.drop(columns=["session_med"], errors="ignore")
 
+    @staticmethod
+    def season_pace_levels(df: pd.DataFrame) -> tuple[dict[str, float], dict[int, float]]:
+        """Dry median pace per circuit, normalised across seasons, plus each season's pace level.
+
+        Regulation changes shift every circuit by a similar factor (2026 ~2% slower than 2025),
+        so a single circuit median mixes eras; levels chain year-over-year ratios on shared circuits.
+        """
+        dry = df[df["compound"].isin(DRY_COMPOUNDS) & (pd.to_numeric(df["rainfall"], errors="coerce").fillna(0) <= 0.05)]
+        if dry.empty:
+            dry = df
+        med = dry.groupby(["circuit_short_name", "year"])["lap_duration"].median().unstack()
+        years = sorted(int(y) for y in med.columns)
+        levels = {years[0]: 1.0}
+        for prev, cur in zip(years, years[1:]):
+            ratio = (med[cur] / med[prev]).dropna()
+            levels[cur] = levels[prev] * (float(ratio.median()) if not ratio.empty else 1.0)
+        pace = med.div(pd.Series(levels)).median(axis=1).dropna().to_dict()
+        pace["*"] = float(pd.Series(pace).median())
+        return {str(k): float(v) for k, v in pace.items()}, levels
+
+    @staticmethod
+    def _season_baseline(df: pd.DataFrame, pace: dict[str, float], levels: dict[int, float]) -> pd.Series:
+        circuit_pace = df["circuit_short_name"].astype(str).map(pace).fillna(pace["*"])
+        level = df["year"].astype(int).map(levels).fillna(levels[max(levels)])
+        return circuit_pace * level
+
     def train(self, df: pd.DataFrame, *, test_fraction: float = 0.2) -> dict:
         if df.empty:
             raise ValueError("Training frame is empty")
@@ -82,28 +108,23 @@ class LapTimeModel:
         if work.empty:
             raise ValueError("No laps left after SC/wet filters")
 
-        baselines = work.groupby("circuit_short_name")["lap_duration"].median().to_dict()
-        baselines["*"] = float(work["lap_duration"].median())
-        baselines.update({k: v for k, v in DEFAULT_CIRCUIT_BASELINES.items() if k not in baselines})
-        self.circuit_baselines = {str(k): float(v) for k, v in baselines.items()}
-
-        work["baseline"] = work["circuit_short_name"].map(self.circuit_baselines).fillna(self.circuit_baselines["*"])
-        work["residual"] = work["lap_duration"] - work["baseline"]
-
         self.features.fit(work)
         work = self.features.transform(work)
         work = work.sort_values(["year", "session_key", "lap_number"])
 
         split_idx = int(len(work) * (1 - test_fraction))
-        train_df = work.iloc[:split_idx]
-        test_df = work.iloc[split_idx:]
+        train_df = work.iloc[:split_idx].copy()
+        test_df = work.iloc[split_idx:].copy()
         if train_df.empty or test_df.empty:
-            train_df = work
-            test_df = work.tail(max(50, len(work) // 10))
+            train_df = work.copy()
+            test_df = work.tail(max(50, len(work) // 10)).copy()
 
-        x_train = train_df[FEATURE_COLUMNS].to_numpy(dtype=np.float32)
-        y_train = train_df["residual"].to_numpy(dtype=np.float32)
-        w_train = train_df["sample_weight"].to_numpy(dtype=np.float32)
+        # Baselines from the train split only, so test laps never leak into their own baseline.
+        pace, levels = self.season_pace_levels(train_df)
+        for part in (train_df, test_df):
+            part["baseline"] = self._season_baseline(part, pace, levels)
+            part["residual"] = part["lap_duration"] - part["baseline"]
+
         x_test = test_df[FEATURE_COLUMNS].to_numpy(dtype=np.float32)
         y_test_abs = test_df["lap_duration"].to_numpy(dtype=np.float32)
         baseline_test = test_df["baseline"].to_numpy(dtype=np.float32)
@@ -122,8 +143,7 @@ class LapTimeModel:
 
         device = xgb_device()
         # Tuned 2026-10: shallower trees + L1 beat depth-6 / 350 trees on temporal holdout.
-        self.model = XGBRegressor(
-            n_estimators=400,
+        params = dict(
             max_depth=4,
             learning_rate=0.05,
             subsample=0.9,
@@ -136,8 +156,8 @@ class LapTimeModel:
             device=device,
             n_jobs=4,
             random_state=42,
-            early_stopping_rounds=40,
         )
+        self.model = XGBRegressor(n_estimators=600, early_stopping_rounds=40, **params)
         self.model.fit(
             x_fit,
             y_fit,
@@ -149,6 +169,21 @@ class LapTimeModel:
         mae = float(mean_absolute_error(y_test_abs, preds))
         rmse = float(np.sqrt(mean_squared_error(y_test_abs, preds)))
         best_iteration = int(getattr(self.model, "best_iteration", None) or self.model.n_estimators)
+
+        # Live model: refit on every lap (latest races included) with the early-stopped tree count.
+        pace, levels = self.season_pace_levels(work)
+        work["baseline"] = self._season_baseline(work, pace, levels)
+        self.model = XGBRegressor(n_estimators=best_iteration + 1, **params)
+        self.model.fit(
+            work[FEATURE_COLUMNS].to_numpy(dtype=np.float32),
+            (work["lap_duration"] - work["baseline"]).to_numpy(dtype=np.float32),
+            sample_weight=work["sample_weight"].to_numpy(dtype=np.float32),
+            verbose=False,
+        )
+        latest = levels[max(levels)]
+        baselines = {c: v * latest for c, v in pace.items()}
+        baselines.update({k: v for k, v in DEFAULT_CIRCUIT_BASELINES.items() if k not in baselines})
+        self.circuit_baselines = {str(k): float(v) for k, v in baselines.items()}
 
         self.meta = {
             "version": self.VERSION,
@@ -163,6 +198,8 @@ class LapTimeModel:
             "feature_columns": FEATURE_COLUMNS,
             "wet_compounds": True,
             "sc_downweight": True,
+            "baseline": "season_normalised_dry_median",
+            "season_levels": {str(y): round(v, 5) for y, v in levels.items()},
         }
         self.save()
         return self.meta

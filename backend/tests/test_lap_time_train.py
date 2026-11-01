@@ -37,3 +37,21 @@ def test_train_returns_mae_and_best_iteration(tmp_path):
     assert meta["mae"] < 3.0
     assert meta["best_iteration"] >= 0
     assert model.is_ready
+
+
+def test_season_pace_levels_track_regulation_shift():
+    # Two circuits, every lap 2% slower in 2026: level captures it, circuit pace stays stable.
+    df = pd.DataFrame(
+        {
+            "circuit_short_name": ["Monza", "Spa", "Monza", "Spa"],
+            "year": [2025, 2025, 2026, 2026],
+            "lap_duration": [80.0, 100.0, 81.6, 102.0],
+            "compound": "MEDIUM",
+            "rainfall": 0.0,
+        }
+    )
+    pace, levels = LapTimeModel.season_pace_levels(df)
+    assert abs(levels[2026] - 1.02) < 1e-9
+    assert abs(pace["Monza"] - 80.0) < 1e-9
+    base = LapTimeModel._season_baseline(pd.DataFrame({"circuit_short_name": ["Spa"], "year": [2026]}), pace, levels)
+    assert abs(base.iloc[0] - 102.0) < 1e-9
