@@ -1,8 +1,9 @@
 {
-  "version": "ranking-pairwise-v2",
+  "version": "ranking-pairwise-v3",
+  "trained_at": "2026-11-01T19:04:56Z",
   "device": "cuda",
-  "n_races": 52,
-  "n_rows": 923,
+  "n_races": 53,
+  "n_rows": 942,
   "feature_columns": [
     "grid_position",
     "recent_form",

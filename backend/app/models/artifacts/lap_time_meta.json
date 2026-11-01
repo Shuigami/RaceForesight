@@ -1,12 +1,13 @@
 {
-  "version": "xgboost-lap-v3",
+  "version": "xgboost-lap-v4",
+  "trained_at": "2026-11-01T19:04:44Z",
   "target": "circuit_residual",
   "device": "cuda",
-  "n_train": 60060,
-  "n_test": 15015,
-  "mae": 1.3138184547424316,
-  "rmse": 1.7329071294264211,
-  "best_iteration": 39,
+  "n_train": 59104,
+  "n_test": 14776,
+  "mae": 2.827577829360962,
+  "rmse": 4.735972119352394,
+  "best_iteration": 60,
   "feature_columns": [
     "tyre_age",
     "lap_number",
@@ -26,5 +27,12 @@
     "wet_compound"
   ],
   "wet_compounds": true,
-  "sc_downweight": true
+  "sc_downweight": true,
+  "baseline": "season_normalised_dry_median",
+  "season_levels": {
+    "2023": 1.0,
+    "2024": 0.98001,
+    "2025": 0.97443,
+    "2026": 0.99827
+  }
 }

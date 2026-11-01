@@ -1,13 +1,16 @@
 {
-  "version": "race-time-xgb-v2",
+  "version": "race-time-xgb-v3",
+  "trained_at": "2026-11-01T19:07:13Z",
   "device": "cuda",
-  "n_races": 44,
-  "n_train": 484,
-  "n_test": 121,
-  "mae_s": 585.2847,
-  "rmse_s": 908.6972,
-  "within_race_mae_s": 14.6767,
-  "best_iteration": 170,
+  "n_races": 45,
+  "n_train": 497,
+  "n_test": 119,
+  "n_test_races": 9,
+  "mae_s": 559.2552,
+  "rmse_s": 894.73,
+  "within_race_mae_s": 14.8354,
+  "duration_ratio": 1.01061,
+  "best_iteration": 99,
   "feature_columns": [
     "grid_position",
     "recent_form",
@@ -23,5 +26,5 @@
     "pit_loss",
     "pace_race_proxy"
   ],
-  "target": "within_race_gap_plus_circuit_duration"
+  "target": "within_race_gap_plus_pace_proxy_duration"
 }

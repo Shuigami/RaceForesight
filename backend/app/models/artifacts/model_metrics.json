@@ -1,50 +1,6 @@
 {
-  "generated_at": "2026-10-25T22:22:00+00:00",
+  "generated_at": "2026-11-01T19:08:45.517816+00:00",
   "models": [
-    {
-      "name": "Lap-time XGBoost",
-      "kind": "lap_time",
-      "version": "xgboost-lap-v2",
-      "primary": false,
-      "metrics": {
-        "mae_s": 1.6696,
-        "rmse_s": 2.0947,
-        "n_train": 60718,
-        "n_test": 15180,
-        "target": "circuit_residual"
-      },
-      "description": "Previous lap-time XGBoost (depth 6, 350 trees, no early stopping)."
-    },
-    {
-      "name": "Lap-time XGBoost",
-      "kind": "lap_time",
-      "version": "xgboost-lap-v3",
-      "primary": true,
-      "metrics": {
-        "mae_s": 1.3138,
-        "rmse_s": 1.7329,
-        "n_train": 60060,
-        "n_test": 15015,
-        "best_iteration": 39,
-        "target": "circuit_residual"
-      },
-      "description": "Primary lap-time model (circuit baseline + residual). Includes compound×age / circuit×compound, stint features, wet compounds, SC downweight. Tuned shallow trees + early stopping."
-    },
-    {
-      "name": "Lap-time Random Forest",
-      "kind": "lap_time",
-      "version": "rf-lap-v2",
-      "primary": false,
-      "metrics": {
-        "mae_s": 1.7673,
-        "rmse_s": 2.5125,
-        "r2": 0.957,
-        "n_train": 45725,
-        "n_test": 11432,
-        "target": "circuit_residual"
-      },
-      "description": "Benchmark regressor on the same features/split as XGBoost (not used in live inference)."
-    },
     {
       "name": "Classification (pairwise ranker)",
       "kind": "classification",
@@ -64,7 +20,7 @@
       "name": "Classification (pairwise ranker)",
       "kind": "classification",
       "version": "ranking-pairwise-v2",
-      "primary": true,
+      "primary": false,
       "metrics": {
         "races_evaluated": 8,
         "eval_protocol": "leave_one_race_out",
@@ -74,6 +30,94 @@
         "mae_position": 1.9233
       },
       "description": "Leave-one-race-out backtest of pairwise XGBRanker vs OpenF1 session_result. Features: qualifying grid, recent/circuit form, shrunk pace, team form, rain. Tuned shallow pairwise (depth 3)."
+    },
+    {
+      "name": "Classification (pairwise ranker)",
+      "kind": "classification",
+      "version": "ranking-pairwise-v3",
+      "primary": true,
+      "metrics": {
+        "races_evaluated": 20,
+        "eval_protocol": "leave_one_race_out",
+        "spearman": 0.816,
+        "kendall_tau": 0.6803,
+        "top3_hit_rate": 0.65,
+        "mae_position": 2.1741
+      },
+      "description": "Leave-one-race-out backtest of pairwise XGBRanker vs OpenF1 session_result. Form/pace use only earlier races (v2 and older leaked later results); monotone in grid/form/pace."
+    },
+    {
+      "name": "Lap-time Random Forest",
+      "kind": "lap_time",
+      "version": "rf-lap-v2",
+      "primary": false,
+      "metrics": {
+        "mae_s": 1.7673,
+        "rmse_s": 2.5125,
+        "r2": 0.957,
+        "n_train": 45725,
+        "n_test": 11432,
+        "target": "circuit_residual"
+      },
+      "description": "Benchmark regressor on the same features/split as XGBoost (not used in live inference)."
+    },
+    {
+      "name": "Lap-time Random Forest",
+      "kind": "lap_time",
+      "version": "rf-lap-v3",
+      "primary": false,
+      "metrics": {
+        "mae_s": 3.5428,
+        "rmse_s": 5.5004,
+        "r2": 0.793,
+        "n_train": 44081,
+        "n_test": 11021,
+        "target": "circuit_residual"
+      },
+      "description": "Benchmark regressor on the same features/split as XGBoost (not used in live inference)."
+    },
+    {
+      "name": "Lap-time XGBoost",
+      "kind": "lap_time",
+      "version": "xgboost-lap-v2",
+      "primary": false,
+      "metrics": {
+        "mae_s": 1.6696,
+        "rmse_s": 2.0947,
+        "n_train": 60718,
+        "n_test": 15180,
+        "target": "circuit_residual"
+      },
+      "description": "Previous lap-time XGBoost (depth 6, 350 trees, no early stopping)."
+    },
+    {
+      "name": "Lap-time XGBoost",
+      "kind": "lap_time",
+      "version": "xgboost-lap-v3",
+      "primary": false,
+      "metrics": {
+        "mae_s": 1.3138,
+        "rmse_s": 1.7329,
+        "n_train": 60060,
+        "n_test": 15015,
+        "best_iteration": 39,
+        "target": "circuit_residual"
+      },
+      "description": "Primary lap-time model (circuit baseline + residual). Includes compound×age / circuit×compound, stint features, wet compounds, SC downweight. Tuned shallow trees + early stopping."
+    },
+    {
+      "name": "Lap-time XGBoost",
+      "kind": "lap_time",
+      "version": "xgboost-lap-v4",
+      "primary": true,
+      "metrics": {
+        "mae_s": 2.8276,
+        "rmse_s": 4.736,
+        "n_train": 59104,
+        "n_test": 14776,
+        "target": "circuit_residual"
+      },
+      "description": "Primary lap-time model (season-normalised circuit baseline + residual). Baselines come from the train split only; v3 and older put test laps in their own baseline, so their MAE is not comparable."
     },
     {
       "name": "Race time (XGBoost)",
@@ -95,7 +139,7 @@
       "name": "Race time (XGBoost)",
       "kind": "race_time",
       "version": "race-time-xgb-v2",
-      "primary": true,
+      "primary": false,
       "metrics": {
         "mae_s": 585.2847,
         "rmse_s": 908.6972,
@@ -108,14 +152,65 @@
         "eval_protocol": "temporal_holdout"
       },
       "description": "Within-race gaps + circuit duration median. Absolute MAE capped by SC/red flags (~7–10 min); within_race_mae_s is the driver-relative metric. Features: grid, form, pace, distance, pit loss."
+    },
+    {
+      "name": "Race time (XGBoost)",
+      "kind": "race_time",
+      "version": "race-time-xgb-v3",
+      "primary": true,
+      "metrics": {
+        "races_evaluated": 20,
+        "eval_protocol": "leave_one_race_out",
+        "mae_s": 380.5469,
+        "rmse_s": 382.2444,
+        "n_train": 497,
+        "n_test": 119,
+        "target": "within_race_gap_plus_pace_proxy_duration"
+      },
+      "description": "Leave-one-race-out MAE/RMSE vs OpenF1 session_result.duration for classified finishers. Prior = lap pace × laps × learned ratio; red-flag races (Monaco, Monza 2026) dominate the mean."
     }
   ],
-  "evaluation_races": 8,
+  "evaluation_races": 20,
   "notes": [
-    "Lap-time v3: shallow trees + early stopping (MAE 1.31s vs 1.67s).",
-    "Ranker v2 LOO (8 races): spearman=0.859 kendall=0.72 top3=0.79 mae_pos=1.92.",
-    "Race-time v2: absolute MAE ~585s is SC-limited; within-race MAE ~14.7s is the useful signal.",
-    "Some 2026 session_result calls return 401 from OpenF1 — those races skipped.",
-    "Models page: pick model + version per section; evaluate merges new scores without dropping older versions."
+    "LOO Lusail session=9850: spearman=0.771 mae_pos=2.56",
+    "LOO Yas Marina Circuit session=9839: spearman=0.786 mae_pos=2.70",
+    "LOO Melbourne session=11234: spearman=0.824 mae_pos=1.88",
+    "LOO Shanghai session=11245: spearman=0.846 mae_pos=1.73",
+    "LOO Suzuka session=11253: spearman=0.883 mae_pos=2.20",
+    "LOO Miami session=11280: spearman=0.905 mae_pos=1.89",
+    "LOO Montreal session=11291: spearman=0.759 mae_pos=2.12",
+    "LOO Monte Carlo session=11299: spearman=0.665 mae_pos=2.75",
+    "LOO Catalunya session=11307: spearman=0.630 mae_pos=2.94",
+    "LOO Spielberg session=11315: spearman=0.913 mae_pos=1.67",
+    "LOO Silverstone session=11326: spearman=0.612 mae_pos=3.50",
+    "LOO Spa-Francorchamps session=11334: spearman=0.951 mae_pos=1.26",
+    "LOO Hungaroring session=11342: spearman=0.888 mae_pos=2.11",
+    "LOO Zandvoort session=11353: spearman=0.824 mae_pos=2.12",
+    "LOO Monza session=11361: spearman=0.889 mae_pos=1.89",
+    "LOO Madring session=11369: spearman=0.948 mae_pos=1.33",
+    "LOO Baku session=11377: spearman=0.706 mae_pos=2.50",
+    "LOO Kuala Lumpur session=11731: spearman=0.644 mae_pos=3.70",
+    "LOO Singapore session=11388: spearman=0.914 mae_pos=1.47",
+    "LOO Austin session=11396: spearman=0.963 mae_pos=1.16",
+    "LOO race-time Singapore session=9896: mae=264.9s rmse=265.6s",
+    "LOO race-time Austin session=9888: mae=149.6s rmse=150.2s",
+    "LOO race-time Mexico City session=9877: mae=125.3s rmse=126.4s",
+    "LOO race-time Interlagos session=9869: mae=38.0s rmse=40.8s",
+    "LOO race-time Las Vegas session=9858: mae=104.1s rmse=105.5s",
+    "LOO race-time Lusail session=9850: mae=13.4s rmse=17.2s",
+    "LOO race-time Yas Marina Circuit session=9839: mae=171.2s rmse=171.8s",
+    "LOO race-time Shanghai session=11245: mae=68.3s rmse=69.1s",
+    "LOO race-time Suzuka session=11253: mae=83.4s rmse=84.2s",
+    "LOO race-time Miami session=11280: mae=177.3s rmse=178.3s",
+    "LOO race-time Monte Carlo session=11299: mae=2348.9s rmse=2348.9s",
+    "LOO race-time Spielberg session=11315: mae=15.5s rmse=17.8s",
+    "LOO race-time Silverstone session=11326: mae=155.9s rmse=157.0s",
+    "LOO race-time Spa-Francorchamps session=11334: mae=130.1s rmse=133.4s",
+    "LOO race-time Monza session=11361: mae=2034.3s rmse=2034.4s",
+    "LOO race-time Madring session=11369: mae=26.2s rmse=36.6s",
+    "LOO race-time Baku session=11377: mae=262.8s rmse=263.3s",
+    "LOO race-time Kuala Lumpur session=11731: mae=1223.0s rmse=1223.1s",
+    "LOO race-time Singapore session=11388: mae=156.0s rmse=157.4s",
+    "LOO race-time Austin session=11396: mae=62.8s rmse=64.1s"
   ]
 }
