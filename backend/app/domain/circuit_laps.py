@@ -18,6 +18,7 @@ RACE_LAPS_BY_CIRCUIT: dict[str, int] = {
     "MIAMI": 57,
     "IMOLA": 63,
     "MONACO": 78,
+    "MONTE CARLO": 78,
     "MONTREAL": 70,
     "CIRCUIT GILLES VILLENEUVE": 70,
     "BARCELONA": 66,
