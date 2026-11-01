@@ -46,8 +46,9 @@ def normalize_race_duration_s(raw: object) -> float | None:
 class RaceTimeModel:
     MODEL_FILE = "race_time_xgb.joblib"
     META_FILE = "race_time_meta.json"
-    DURATION_BASELINES_FILE = "race_time_circuit_baselines.json"
-    VERSION = "race-time-xgb-v2"
+    VERSION = "race-time-xgb-v3"
+    # Median race duration / green-flag field proxy (SC laps, fuel, starts); refit on train.
+    DEFAULT_DURATION_RATIO = 1.03
     DISPLAY_NAME = "Race time (XGBoost)"
 
     def __init__(self, artifact_dir: Path | None = None) -> None:
@@ -55,13 +56,13 @@ class RaceTimeModel:
         self.artifact_dir.mkdir(parents=True, exist_ok=True)
         self.model: XGBRegressor | None = None
         self.meta: dict = {}
-        self.duration_baselines: dict[str, float] = {"*": 5600.0}
+        self.duration_ratio = self.DEFAULT_DURATION_RATIO
         self._ranker = RankingModel(self.artifact_dir)
 
-    def _duration_baseline_for(self, circuit: str) -> float:
-        if circuit in self.duration_baselines:
-            return float(self.duration_baselines[circuit])
-        return float(self.duration_baselines.get("*", 5600.0))
+    @staticmethod
+    def _field_proxy(df: pd.DataFrame) -> pd.Series:
+        """Green-flag field race time: circuit lap baseline × laps + one stop."""
+        return df["circuit_baseline"].astype(float) * df["race_laps"].astype(float) + df["pit_loss"].astype(float)
 
     @property
     def is_ready(self) -> bool:
@@ -83,6 +84,10 @@ class RaceTimeModel:
                 pass
         return lap._baseline_for(circuit)
 
+    def _duration_ratio(self, df: pd.DataFrame) -> float:
+        by_race = df.assign(proxy=self._field_proxy(df)).groupby("session_key")
+        return float((by_race["race_time_s"].median() / by_race["proxy"].first()).median())
+
     def enrich_features(
         self,
         features: pd.DataFrame,
@@ -99,7 +104,6 @@ class RaceTimeModel:
         work["circuit_baseline"] = baseline
         work["pit_loss"] = float(pit_loss)
         work["pace_race_proxy"] = (baseline + work["pace_offset"].astype(float)) * laps + float(pit_loss)
-        work["duration_baseline"] = self._duration_baseline_for(circuit)
         return work
 
     def build_race_features(
@@ -127,7 +131,7 @@ class RaceTimeModel:
     def train(self, race_frames: list[pd.DataFrame], *, test_fraction: float = 0.2) -> dict:
         """Each frame is one race with RACE_TIME_FEATURE_COLUMNS + race_time_s label.
 
-        Learns within-race gaps; absolute time = circuit duration median + gap.
+        Frames must be oldest first. Learns within-race gaps; absolute time = pace-proxy prior + gap.
         Absolute MAE is dominated by SC/red-flag variance (~7–10 min ceiling).
         """
         if not race_frames:
@@ -138,36 +142,24 @@ class RaceTimeModel:
             work = frame.dropna(subset=["race_time_s"]).copy()
             if len(work) < 6:
                 continue
+            work["race_idx"] = len(parts)
             parts.append(work)
         if len(parts) < 3:
             raise ValueError("Need >=3 races with duration labels")
 
         data = pd.concat(parts, ignore_index=True)
-        if "session_key" in data.columns:
-            data = data.sort_values(["session_key", "driver_number"])
-        if "circuit_short_name" not in data.columns:
-            data["circuit_short_name"] = "*"
+        # Split whole races: a row split put half of Monaco 2026 in train and flattered the old prior.
+        data["session_key"] = data["race_idx"]
+        data["race_mean"] = data.groupby("session_key")["race_time_s"].transform("mean")
+        data["gap"] = data["race_time_s"] - data["race_mean"]
+        n_test_races = max(1, int(round(len(parts) * test_fraction)))
+        train_df = data[data["race_idx"] < len(parts) - n_test_races].copy()
+        test_df = data[data["race_idx"] >= len(parts) - n_test_races].copy()
 
-        split_idx = int(len(data) * (1 - test_fraction))
-        train_df = data.iloc[:split_idx].copy()
-        test_df = data.iloc[split_idx:].copy()
-        if train_df.empty or test_df.empty:
-            train_df = data.copy()
-            test_df = data.tail(max(20, len(data) // 10)).copy()
-
-        baselines = train_df.groupby("circuit_short_name")["race_time_s"].median().to_dict()
-        baselines["*"] = float(train_df["race_time_s"].median())
-        self.duration_baselines = {str(k): float(v) for k, v in baselines.items()}
-
-        if "session_key" not in train_df.columns:
-            train_df["session_key"] = 0
-        train_df["race_mean"] = train_df.groupby("session_key")["race_time_s"].transform("mean")
-        train_df["gap"] = train_df["race_time_s"] - train_df["race_mean"]
-        test_df["duration_baseline"] = (
-            test_df["circuit_short_name"].map(self.duration_baselines).fillna(self.duration_baselines["*"])
-        )
-        if "session_key" not in test_df.columns:
-            test_df["session_key"] = 0
+        # Prior = pace proxy × median ratio. Per-circuit duration medians had 1–2 samples and
+        # inherited red flags (Monaco 2026 ≈ 2h24), walk-forward MAE 453s → 330s with the ratio.
+        self.duration_ratio = self._duration_ratio(train_df)
+        test_df["duration_baseline"] = self._field_proxy(test_df) * self.duration_ratio
 
         es_idx = max(1, int(len(train_df) * 0.85))
         fit_df, es_df = train_df.iloc[:es_idx], train_df.iloc[es_idx:]
@@ -184,8 +176,7 @@ class RaceTimeModel:
 
         device = xgb_device()
         # Tuned 2026-10: within-race gaps + circuit duration prior; shallow + L2.
-        self.model = XGBRegressor(
-            n_estimators=400,
+        params = dict(
             max_depth=3,
             learning_rate=0.05,
             subsample=0.8,
@@ -196,8 +187,8 @@ class RaceTimeModel:
             device=device,
             n_jobs=4,
             random_state=42,
-            early_stopping_rounds=25,
         )
+        self.model = XGBRegressor(n_estimators=400, early_stopping_rounds=25, **params)
         self.model.fit(x_fit, y_fit, eval_set=[(x_es, y_es)], verbose=False)
         gap_hat = self.model.predict(x_test)
         pred = test_df["duration_baseline"].to_numpy(dtype=np.float32) + gap_hat
@@ -221,6 +212,15 @@ class RaceTimeModel:
             )
         within_mae = float(np.mean(within_vals)) if within_vals else None
         best_iteration = int(getattr(self.model, "best_iteration", None) or self.model.n_estimators)
+
+        # Live model: every race (current season included), early-stopped tree count.
+        self.duration_ratio = self._duration_ratio(data)
+        self.model = XGBRegressor(n_estimators=best_iteration + 1, **params)
+        self.model.fit(
+            data[RACE_TIME_FEATURE_COLUMNS].to_numpy(dtype=np.float32),
+            data["gap"].to_numpy(dtype=np.float32),
+            verbose=False,
+        )
         self.meta = {
             "version": self.VERSION,
             "trained_at": utc_now_iso(),
@@ -228,12 +228,14 @@ class RaceTimeModel:
             "n_races": len(parts),
             "n_train": int(len(train_df)),
             "n_test": int(len(test_df)),
+            "n_test_races": n_test_races,
             "mae_s": round(mae, 4),
             "rmse_s": round(rmse, 4),
             "within_race_mae_s": round(within_mae, 4) if within_mae is not None else None,
+            "duration_ratio": round(self.duration_ratio, 5),
             "best_iteration": best_iteration,
             "feature_columns": RACE_TIME_FEATURE_COLUMNS,
-            "target": "within_race_gap_plus_circuit_duration",
+            "target": "within_race_gap_plus_pace_proxy_duration",
         }
         self.save()
         return self.meta
@@ -243,9 +245,7 @@ class RaceTimeModel:
             self.load()
         assert self.model is not None
         work = features.copy()
-        if "duration_baseline" not in work.columns:
-            circuits = work.get("circuit_short_name", pd.Series(["*"] * len(work))).astype(str)
-            work["duration_baseline"] = [self._duration_baseline_for(c) for c in circuits]
+        work["duration_baseline"] = self._field_proxy(work) * self.duration_ratio
         gap = self.model.predict(work[RACE_TIME_FEATURE_COLUMNS].to_numpy(dtype=np.float32))
         work["predicted_race_time_s"] = work["duration_baseline"].to_numpy(dtype=np.float32) + gap
         work = work.sort_values("predicted_race_time_s").reset_index(drop=True)
@@ -257,9 +257,6 @@ class RaceTimeModel:
             raise RuntimeError("No race-time model to save")
         joblib.dump(self.model, self.artifact_dir / self.MODEL_FILE)
         (self.artifact_dir / self.META_FILE).write_text(json.dumps(self.meta, indent=2), encoding="utf-8")
-        (self.artifact_dir / self.DURATION_BASELINES_FILE).write_text(
-            json.dumps(self.duration_baselines, indent=2), encoding="utf-8"
-        )
 
     def load(self) -> RaceTimeModel:
         path = self.artifact_dir / self.MODEL_FILE
@@ -269,9 +266,5 @@ class RaceTimeModel:
         meta_path = self.artifact_dir / self.META_FILE
         if meta_path.exists():
             self.meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        baselines_path = self.artifact_dir / self.DURATION_BASELINES_FILE
-        if baselines_path.exists():
-            self.duration_baselines = {
-                str(k): float(v) for k, v in json.loads(baselines_path.read_text(encoding="utf-8")).items()
-            }
+        self.duration_ratio = float(self.meta.get("duration_ratio", self.DEFAULT_DURATION_RATIO))
         return self
