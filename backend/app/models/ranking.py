@@ -27,11 +27,14 @@ RANK_FEATURE_COLUMNS = [
     "grid_missing",
 ]
 
+# Worse grid / form / pace can only lower the score: stops 50-race noise from inverting them.
+_MONOTONE = {"grid_position": -1, "recent_form": -1, "circuit_form": -1, "pace_offset": -1, "team_form": -1}
+
 
 class RankingModel:
     MODEL_FILE = "ranking_xgb.joblib"
     META_FILE = "ranking_meta.json"
-    VERSION = "ranking-pairwise-v2"
+    VERSION = "ranking-pairwise-v3"
     DISPLAY_NAME = "Classification (pairwise ranker)"
 
     def __init__(self, artifact_dir: Path | None = None) -> None:
@@ -126,12 +129,13 @@ class RankingModel:
         y = data["relevance"].to_numpy(dtype=np.float32)
 
         device = xgb_device()
-        # Tuned 2026-10 LOO: shallow pairwise beats deeper trees on mae/top3; ndcg hurt overall order.
+        # Tuned 2026-11 on leak-free LOO (20 races): monotone depth-2 0.814 vs 0.799 spearman.
         self.model = XGBRanker(
             objective="rank:pairwise",
-            n_estimators=150,
-            max_depth=3,
-            learning_rate=0.1,
+            n_estimators=200,
+            max_depth=2,
+            learning_rate=0.03,
+            monotone_constraints="(" + ",".join(str(_MONOTONE.get(c, 0)) for c in RANK_FEATURE_COLUMNS) + ")",
             subsample=0.8,
             colsample_bytree=0.8,
             min_child_weight=1,
